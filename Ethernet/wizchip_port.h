@@ -27,6 +27,12 @@ extern "C" {
   */
 int W5500_Init(void);
 
+/**
+  * @brief Copy the currently configured IPv4 DNS server address.
+  * @param address (uint8_t*) Destination array containing at least four bytes.
+  */
+void W5500_GetDnsServer(uint8_t* address);
+
 #ifdef __cplusplus
 }
 #endif

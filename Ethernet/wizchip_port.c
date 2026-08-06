@@ -15,10 +15,13 @@
 #include "wizchip_conf.h"
 #include "socket.h"
 #include "DHCP/dhcp.h"
+#include "DNS/dns.h"
 #include <stdbool.h>
+#include <string.h>
 
 #define W5500_USE_DHCP             1U
 #define W5500_DHCP_SOCKET          7U
+#define W5500_DNS_SOCKET           6U
 #define W5500_DHCP_RETRIES        20U
 #define W5500_LINK_RETRIES        10U
 #define W5500_DHCP_BUFFER_SIZE    548U
@@ -53,6 +56,8 @@ static SemaphoreHandle_t w5500BusMutex;
 static volatile bool w5500AddressAssigned;
 static uint8_t w5500DhcpBuffer[W5500_DHCP_BUFFER_SIZE];
 #endif
+
+static uint8_t w5500DnsBuffer[MAX_DNS_BUF_SIZE];
 
 static void w5500_Select(void);
 static void w5500_Release(void);
@@ -93,8 +98,18 @@ int W5500_Init(void) {
   if (w5500_WaitForLink() != SUCCESS) return (W5500_ERROR_LINK);
 
   w5500_ConfigureNetwork();
+  DNS_init(W5500_DNS_SOCKET, w5500DnsBuffer);
   w5500_PrintNetwork();
   return (0);
+}
+
+
+
+
+// -------------------------------------------------------------
+void W5500_GetDnsServer(uint8_t* address) {
+  if (address == NULL) return;
+  memcpy(address, w5500Network.dns, 4U);
 }
 
 

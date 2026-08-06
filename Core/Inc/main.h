@@ -45,11 +45,13 @@ extern "C" {
 #include "onewire.h"
 #include "spi.h"
 #include "whxxxx.h"
+#include "rtc.h"
 
 #include "heart_beat.h"
 #include "health_service.h"
 #include "temperature_service.h"
 #include "threshold_service.h"
+#include "rtc_service.h"
 #include "api_service.h"
 
 #include "wizchip_port.h"
@@ -68,6 +70,7 @@ extern __IO uint32_t peripheralReadiness;
 #define PERIPHERAL_SPI1_ERROR_BIT          3
 #define PERIPHERAL_WH_DISPLAY_ERROR_BIT    4
 #define PERIPHERAL_BUZZER_ERROR_BIT        5
+#define PERIPHERAL_RTC_ERROR_BIT           6
 
 #ifdef __cplusplus
 }
