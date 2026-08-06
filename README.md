@@ -11,6 +11,7 @@
 ### Development documentation
 
 * [Naming conventions](docs/NAMING_CONVENTIONS.md)
+* [Postman collection](postman_collection.json) for the HTTP API
 
 ### HTTP API
 
@@ -22,7 +23,7 @@ required header beyond `Content-Length` (sent automatically by `curl`).
 
 | Method | Path | Description |
 | --- | --- | --- |
-| `GET` | `/health` | General device status |
+| `GET`, `HEAD` | `/health` | General device status |
 | `GET` | `/api/v1/rtc` | Current time and NTP synchronization state |
 | `GET` | `/api/v1/sensors` | Summary of every connected sensor |
 | `GET` | `/api/v1/sensors/<sensor_index>` | Full detail for one sensor |
@@ -34,8 +35,9 @@ required header beyond `Content-Length` (sent automatically by `curl`).
 Sensor and threshold indexes are one-based. Physical sensor indexes remain
 assigned to the same registered sensor: DS18B20 devices are identified by
 their unique 64-bit ROM addresses, so disconnecting one does not renumber
-the others. Threshold indexes address a fixed bank of eight configurable
-slots (1 through 8).
+the others. Threshold indexes address a fixed bank of three configurable
+slots (1 through 3). `HEAD /health` returns the same status line and headers
+as `GET /health` without a body, per usual HTTP semantics.
 
 Errors are returned as `{"error":"<reason>"}` with a matching HTTP status
 code: `400` for a malformed request or out-of-range value, `404` for an
@@ -119,24 +121,32 @@ $ curl http://192.168.1.10/api/v1/temperature
 
 #### `GET /api/v1/thresholds` and `PUT /api/v1/thresholds/<threshold_index>`
 
-A threshold sounds the buzzer at `tone_hz` whenever `sensor_index`'s
-temperature reaches or exceeds `temperature`. `triggered` reports whether
-the threshold is currently exceeded. All eight slots are always listed;
-unused slots are returned with `"enabled":false`.
+Each of the three slots has a fixed beep pattern, sounded at its configured
+`tone_hz` whenever `sensor_index`'s temperature reaches or exceeds
+`temperature`: slot 1 beeps 3 times once when crossed, slot 2 beeps 5 times
+once when crossed, and slot 3 beeps 10 times when crossed and again every
+10 seconds for as long as it stays exceeded. A slot re-arms (can beep again)
+only after its temperature drops back below the trip point and reaches it
+again. `triggered` reports whether the threshold is currently exceeded,
+independent of whether it just beeped. All three slots are always listed.
+By default, all three are enabled, watching physical sensor 1: slot 1 at
+40 C (1400 Hz), slot 2 at 70 C (2100 Hz), and slot 3 at 100 C (2600 Hz).
 
 ```console
 $ curl http://192.168.1.10/api/v1/thresholds
-{"count":8,"thresholds":[{"index":1,"enabled":true,"sensor_index":1,"temperature":30.00,"tone_hz":2000,"triggered":false},{"index":2,"enabled":false,"sensor_index":0,"temperature":0.00,"tone_hz":0,"triggered":false}, ...]}
+{"count":3,"thresholds":[{"index":1,"enabled":true,"sensor_index":1,"temperature":40.00,"tone_hz":1400,"triggered":false},{"index":2,"enabled":true,"sensor_index":1,"temperature":70.00,"tone_hz":2100,"triggered":false},{"index":3,"enabled":true,"sensor_index":1,"temperature":100.00,"tone_hz":2600,"triggered":false}]}
 
 $ curl -X PUT http://192.168.1.10/api/v1/thresholds/2 \
-    -d '{"sensor_index":1,"temperature":30.5,"tone_hz":2500,"enabled":true}'
-{"index":2,"enabled":true,"sensor_index":1,"temperature":30.50,"tone_hz":2500,"triggered":false}
+    -d '{"sensor_index":1,"temperature":75.5,"tone_hz":2100,"enabled":true}'
+{"index":2,"enabled":true,"sensor_index":1,"temperature":75.50,"tone_hz":2100,"triggered":false}
 ```
 
 `sensor_index` and `tone_hz` (16 to 20000 Hz) are required; `enabled`
-defaults to `true` when omitted. Only one tone plays at a time: if several
-thresholds are exceeded simultaneously, the lowest-indexed one wins for
-that measurement cycle.
+defaults to `true` when omitted. Reconfiguring a slot re-arms it. Only one
+tone can play at a time: if several thresholds are exceeded simultaneously,
+the most severe (highest-indexed) one wins for that measurement cycle; the
+others are still marked as acknowledged, so they do not queue up and beep
+later on their own.
 
 #### `POST /api/v1/buzzer/test`
 

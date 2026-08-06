@@ -1,0 +1,183 @@
+{
+  "info": {
+    "_postman_id": "9f2e6f2a-6b1a-4d7b-9b0a-ethermometer-api",
+    "name": "Ethernet Thermometer API",
+    "description": "HTTP/JSON REST API served by the STM32F103C8 Health Check Device on port 80. See README.md for the full protocol description.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://192.168.1.10",
+      "type": "string"
+    },
+    {
+      "key": "sensor_index",
+      "value": "1",
+      "type": "string"
+    },
+    {
+      "key": "threshold_index",
+      "value": "1",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Health",
+      "item": [
+        {
+          "name": "Get device health",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/health",
+              "host": ["{{base_url}}"],
+              "path": ["health"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Check device health (HEAD)",
+          "request": {
+            "method": "HEAD",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/health",
+              "host": ["{{base_url}}"],
+              "path": ["health"]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "RTC",
+      "item": [
+        {
+          "name": "Get RTC and NTP sync state",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/rtc",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "rtc"]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Sensors",
+      "item": [
+        {
+          "name": "List sensors",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/sensors",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "sensors"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get sensor detail",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/sensors/{{sensor_index}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "sensors", "{{sensor_index}}"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "List temperatures",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/temperature",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "temperature"]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Thresholds",
+      "item": [
+        {
+          "name": "List thresholds",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/thresholds",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "thresholds"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Set threshold",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sensor_index\": 1,\n  \"temperature\": 70.5,\n  \"tone_hz\": 2500,\n  \"enabled\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/thresholds/{{threshold_index}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "thresholds", "{{threshold_index}}"]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Buzzer",
+      "item": [
+        {
+          "name": "Test buzzer",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/buzzer/test",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "buzzer", "test"]
+            }
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}

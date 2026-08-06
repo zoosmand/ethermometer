@@ -16,14 +16,14 @@
 
 #include "main.h"
 
-#define THRESHOLD_SERVICE_MAX_THRESHOLDS 8U
+#define THRESHOLD_SERVICE_MAX_THRESHOLDS 3U
 
 /**
   * @brief One temperature trip point that sounds the buzzer when reached.
   * @param enabled (BaseType_t) Whether this slot is active.
   * @param sensorIndex (uint8_t) One-based physical sensor number to watch.
   * @param temperature (int32_t) Trip point in hundredths of a degree Celsius.
-  * @param toneHz (uint32_t) Buzzer tone sounded while the threshold is exceeded.
+  * @param toneHz (uint32_t) Buzzer tone used for this slot's beep pattern.
   * @param triggered (BaseType_t) Whether the threshold is currently exceeded.
   */
 typedef struct {
@@ -35,7 +35,10 @@ typedef struct {
 } Threshold_TypeDef;
 
 /**
-  * @brief Reset every threshold slot to disabled and create the mutex.
+  * @brief Create the mutex and activate the default alarm thresholds.
+  *
+  * All three slots start enabled, watching physical sensor 1: slot 1 at
+  * 40 C (1400 Hz), slot 2 at 70 C (2100 Hz), and slot 3 at 100 C (2600 Hz).
   */
 void ThresholdService_Init(void);
 
@@ -69,10 +72,17 @@ ErrorStatus ThresholdService_Set(
 
 /**
   * @brief Compare every enabled threshold against its sensor's latest
-  *        snapshot and drive the buzzer accordingly.
+  *        snapshot and sound its beep pattern when newly exceeded.
   *
-  * Intended to be called once per temperature measurement cycle. Only one
-  * tone can play at a time; the first exceeded threshold in slot order wins.
+  * Intended to be called once per temperature measurement cycle. Each slot
+  * has a fixed beep pattern sounded at its configured tone: slot 1 beeps 3
+  * times once when crossed, slot 2 beeps 5 times once when crossed, and
+  * slot 3 beeps 10 times when crossed and again every 10 seconds for as
+  * long as it remains exceeded. A slot re-arms (may beep again) only after
+  * its temperature drops back below the trip point and reaches it again.
+  * Only one tone can play at a time; if more than one slot is due to beep
+  * in the same cycle, the most severe (highest-indexed) one wins and the
+  * others are still marked as acknowledged so they do not queue up.
   */
 void ThresholdService_Evaluate(void);
 

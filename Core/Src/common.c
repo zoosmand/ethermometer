@@ -73,12 +73,6 @@ __STATIC_INLINE void _putc(uint8_t ch) {
     ITM_SendCharChannel(ch, ITM_OUT);
   #endif
 
-  #if defined(USE_WH_DISPLAY)
-    if (!FLAG_CHECK(peripheralReadiness, PERIPHERAL_WH_DISPLAY_ERROR_BIT)) {
-      DSPL_OUT(ch);
-    }
-  #endif
-
   #ifdef USART_OUT
     while (!(PREG_CHECK(USART_OUT->SR, USART_SR_TXE_Pos)));
     USART_OUT->DR = ch;
