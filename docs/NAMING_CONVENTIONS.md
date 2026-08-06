@@ -12,8 +12,8 @@ dedicated refactoring work, because renaming an API can affect several modules.
 - Use English names that describe purpose rather than implementation detail.
 - Spell out words unless an abbreviation is established in the hardware or
   protocol documentation.
-- Keep hardware names in their canonical form: `DS18B20`, `IWDG`, `SPI`,
-  `TCP`, `W5500`, and `WHxxxx`.
+- Keep hardware names in their canonical form: `DS18B20`, `HTTP`, `IWDG`,
+  `JSON`, `SPI`, `TCP`, `W5500`, and `WHxxxx`.
 - Include units in names when the type alone does not make them clear, for
   example `periodMs`, `temperatureCentiDegrees`, or `humidityMilliPercent`.
 - Avoid new identifiers beginning with an underscore. C reserves several such

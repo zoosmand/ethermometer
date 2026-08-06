@@ -63,12 +63,17 @@ int main(void) {
 
   /* Run the Temperature Measurement Service */
   OneWireBusConfiguration_Init();
+  ThresholdService_Init();
   TemperatureSensorService_Init();
 
-  /* TCP command service */
+  /* HTTP API service */
   if (!FLAG_CHECK(peripheralReadiness, PERIPHERAL_SPI1_ERROR_BIT)) {
-    TcpCommandService_Init();
+    ApiService_Init();
   }
+
+  /* RTC reporting and NTP synchronization; syncs only while SPI1/Ethernet is
+   * healthy, but reports and prints locally either way. */
+  RtcService_Init();
 
   /* Run the internal health and watchdog service last. */
   HealthService_Init();
@@ -214,6 +219,11 @@ void SystemInit (void) {
   SET_BIT(RCC->AHBENR, (
       RCC_AHBENR_CRCEN
     | RCC_AHBENR_SRAMEN
+  ));
+
+  /* APB1 peripherals */
+  SET_BIT(RCC->APB1ENR, (
+      RCC_APB1ENR_BKPEN
   ));
 
   /* APB2 peripherals */

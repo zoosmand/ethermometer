@@ -5,100 +5,86 @@
 ### Features
 
 * Straightforward peripheral initialization
-* TCP measurement service on port 5005
-* TCP sensor information and health service on port 5006
+* HTTP/JSON REST API on port 80
+* Temperature-triggered buzzer alarm thresholds
 
 ### Development documentation
 
 * [Naming conventions](docs/NAMING_CONVENTIONS.md)
+* [Postman collection](postman_collection.json) for the HTTP API
 
-### TCP measurement commands
+### HTTP API
 
-Measurement commands listen on TCP port 5005. Commands may be terminated with
-`CR`, `LF`, or `CRLF`.
-The server sends one response and then closes the connection. Sensor commands
-return cached results from the periodic measurement service; they do not start
-a new conversion.
+The device serves a small JSON REST API on TCP port 80. Every response has
+`Content-Type: application/json` and the connection is closed after each
+response (`Connection: close`), so a new request needs a new connection.
+Request bodies for `POST`/`PUT` routes are optional plain JSON with no
+required header beyond `Content-Length` (sent automatically by `curl`).
 
-| Command | Response |
-| --- | --- |
-| `get_all_X` | All recent measurements from physical sensor `X` |
-| `get_t_X` | Recent temperature from temperature sensor `X` |
-| `get_p_X` | Recent pressure from pressure sensor `X` |
-| `get_h_X` | Recent relative humidity from humidity sensor `X` |
-| Unknown command | `ERR unknown_command\r\n` |
+| Method | Path | Description |
+| --- | --- | --- |
+| `GET`, `HEAD` | `/health` | General device status |
+| `GET` | `/api/v1/rtc` | Current time and NTP synchronization state |
+| `GET` | `/api/v1/sensors` | Summary of every connected sensor |
+| `GET` | `/api/v1/sensors/<sensor_index>` | Full detail for one sensor |
+| `GET` | `/api/v1/temperature` | Temperature reading from every sensor |
+| `GET` | `/api/v1/thresholds` | Configured buzzer alarm thresholds |
+| `PUT` | `/api/v1/thresholds/<threshold_index>` | Configure one alarm threshold |
+| `POST` | `/api/v1/buzzer/test` | Sound the buzzer's self-test tone |
 
-Sensor numbers are one-based. Every command uses the same physical sensor list.
-For example, if physical sensor 1 is a DS18B20, `get_t_1` returns its
-temperature while `get_p_1` and `get_h_1` return
-`ERR measurement_not_supported`.
+Sensor and threshold indexes are one-based. Physical sensor indexes remain
+assigned to the same registered sensor: DS18B20 devices are identified by
+their unique 64-bit ROM addresses, so disconnecting one does not renumber
+the others. Threshold indexes address a fixed bank of three configurable
+slots (1 through 3). `HEAD /health` returns the same status line and headers
+as `GET /health` without a body, per usual HTTP semantics.
 
-Example responses:
+Errors are returned as `{"error":"<reason>"}` with a matching HTTP status
+code: `400` for a malformed request or out-of-range value, `404` for an
+unknown route or sensor index, and `500` if a self-test genuinely fails.
 
-```text
-get_all_1   -> OK model:DS18B20,t:28.06
-get_all_3   -> OK model:BME280,t:26.98,p:100099,h:46.419
-get_t_1     -> OK 28.06
-get_p_1     -> OK 100099
-get_h_1     -> OK 46.419
-```
+#### `GET /health`
 
-### TCP sensor information and health
-
-Sensor information and health checks listen on a separate WIZnet socket on TCP
-port 5006.
-
-| Command | Response |
-| --- | --- |
-| `get_sensors` | Number of registered sensors by measurement type |
-| `get_model_X` | Model of physical sensor `X` |
-| `get_sn_X` | Serial number of physical sensor `X` |
-| `health_X` | Cached availability and health of physical sensor `X` |
-
-These commands use the same one-based physical sensor list as `get_all_X`.
-Physical indexes remain assigned to the same registered sensor. DS18B20 devices
-are identified by their unique 64-bit ROM addresses, so disconnecting one does
-not renumber the others.
-
-`get_sensors` returns counts in the following format:
-
-```text
-OK t:4,h:2,p:2,all:4
-```
-
-Here, `all` is the number of physical sensors. A sensor that provides multiple
-measurement types is counted once in `all` and once in each applicable type.
-Gas measurements are reserved for a future protocol extension.
-
-Information examples:
-
-```text
-get_model_1 -> OK DS18B20
-get_sn_1    -> OK 28FF641D2A1603B7
-```
-
-DS18B20 serial numbers are returned as 16 uppercase hexadecimal digits. Bosch
-sensor serial numbers use the per-device 31-bit Unique ID and are returned as
-eight uppercase hexadecimal digits.
-
-`health_X` reads cached service metadata and does not communicate with the
-sensor. A healthy response includes the model, time since the last successful
-measurement in milliseconds, consecutive failure count, and last error:
-
-```text
-health_1 -> OK model:DS18B20,state:healthy,age_ms:2150,failures:0,error:none
-```
-
-Example using Netcat:
+Overall device status, derived from boot-time peripheral initialization and
+the internal watchdog service. `status` is `"ok"`, `"degraded"` (a
+non-critical peripheral failed to initialize), or `"failed"` (the internal
+self-check watchdog has latched a failure).
 
 ```console
-$ printf 'health_1\r\n' | nc 192.168.1.10 5006
-OK model:DS18B20,state:healthy,age_ms:2150,failures:0,error:none
+$ curl http://192.168.1.10/health
+{"status":"ok","uptime_ms":723041,"watchdog_latched":false,"peripherals":{"heartbeat_led":true,"usart1":true,"onewire":true,"eth_spi":true,"display":true,"buzzer":true,"rtc":true}}
 ```
 
-The possible health states are:
+#### `GET /api/v1/rtc`
 
-| State | Meaning |
+The device's backup-domain RTC is reset to zero on every boot (SystemInit
+forces a backup-domain reset every time, so nothing survives a reset without
+a battery), then synchronized against `pool.ntp.org` over UDP/123 as soon as
+the network comes up, and re-synchronized once an hour after that.
+`synchronized` is `false` until the first sync succeeds; `unix_time`/`iso8601`
+still advance from zero in the meantime, they just aren't wall-clock-accurate
+yet. The same reading is also printed once a minute via `printf()` (visible
+on the ITM/USART debug output), independent of the API.
+
+```console
+$ curl http://192.168.1.10/api/v1/rtc
+{"unix_time":1767686400,"iso8601":"2026-01-06T12:00:00Z","synchronized":true,"last_sync_age_ms":142317,"sync_failures":0}
+```
+
+#### `GET /api/v1/sensors`
+
+`modes` lists the measurement types the sensor supports (`"temperature"`,
+`"pressure"`, `"humidity"`). `serial` is the vendor-assigned identifier
+(a DS18B20's 64-bit ROM code, 16 uppercase hexadecimal digits).
+
+```console
+$ curl http://192.168.1.10/api/v1/sensors
+{"count":2,"sensors":[{"index":1,"model":"DS18B20","modes":["temperature"],"serial":"28FF641D2A1603B7","status":"healthy"},{"index":2,"model":"DS18B20","modes":["temperature"],"serial":"28AA123B4C5D6E7F","status":"stale"}]}
+```
+
+The possible `status` values are:
+
+| Status | Meaning |
 | --- | --- |
 | `initializing` | Registered, but no successful measurement is available yet |
 | `healthy` | The latest periodic measurement succeeded |
@@ -107,31 +93,69 @@ The possible health states are:
 | `stale` | The last successful measurement is older than three service periods |
 | `missing` | A previously registered DS18B20 is absent from the latest discovery |
 
-Diagnostic errors currently include `none`, `not_ready`, `timeout`, `crc`,
-`bus`, `missing`, and `conversion`. When a sensor has never produced a valid
-measurement, the response contains `age_ms:unavailable`.
+#### `GET /api/v1/sensors/<sensor_index>`
 
-Temperature is expressed in degrees Celsius, pressure in pascals, and relative
-humidity as a percentage.
-
-Possible error responses include:
-
-| Response | Meaning |
-| --- | --- |
-| `ERR invalid_sensor_number` | The index is missing, zero, malformed, or too large |
-| `ERR sensor_not_found` | The requested physical sensor index does not exist |
-| `ERR measurement_not_supported` | The selected sensor does not provide the requested measurement type |
-| `ERR measurement_unavailable` | The sensor exists, but no valid recent measurement is available |
-| `ERR command_too_long` | The command exceeds the receive buffer |
-| `ERR unknown_command` | The command name is not supported |
-
-Example using Netcat, with the device at `192.168.1.10`:
+Full detail for one physical sensor, including cached health metadata.
+`temperature`/`pressure`/`humidity` are `null` when the sensor does not
+support that measurement type or no valid recent measurement is available;
+`age_ms` is `null` until the first successful measurement.
 
 ```console
-$ printf 'get_all_3\r\n' | nc 192.168.1.10 5005
-OK model:BME280,t:26.98,p:100099,h:46.419
-$ printf 'get_sensors\r\n' | nc 192.168.1.10 5006
-OK t:4,h:2,p:2,all:4
+$ curl http://192.168.1.10/api/v1/sensors/1
+{"index":1,"model":"DS18B20","modes":["temperature"],"serial":"28FF641D2A1603B7","status":"healthy","age_ms":2150,"failures":0,"error":"none","temperature":28.06,"pressure":null,"humidity":null}
+```
+
+Diagnostic `error` values include `none`, `not_ready`, `timeout`, `crc`,
+`bus`, `missing`, and `conversion`. Temperature is expressed in degrees
+Celsius, pressure in pascals, and relative humidity as a percentage.
+
+#### `GET /api/v1/temperature`
+
+A lighter-weight readout of every sensor's temperature, without the rest of
+the sensor detail.
+
+```console
+$ curl http://192.168.1.10/api/v1/temperature
+{"count":2,"temperatures":[{"index":1,"available":true,"temperature":28.06},{"index":2,"available":false,"temperature":null}]}
+```
+
+#### `GET /api/v1/thresholds` and `PUT /api/v1/thresholds/<threshold_index>`
+
+Each of the three slots has a fixed beep pattern, sounded at its configured
+`tone_hz` whenever `sensor_index`'s temperature reaches or exceeds
+`temperature`: slot 1 beeps 3 times once when crossed, slot 2 beeps 5 times
+once when crossed, and slot 3 beeps 10 times when crossed and again every
+10 seconds for as long as it stays exceeded. A slot re-arms (can beep again)
+only after its temperature drops back below the trip point and reaches it
+again. `triggered` reports whether the threshold is currently exceeded,
+independent of whether it just beeped. All three slots are always listed.
+By default, all three are enabled, watching physical sensor 1: slot 1 at
+40 C (1400 Hz), slot 2 at 70 C (2100 Hz), and slot 3 at 100 C (2600 Hz).
+
+```console
+$ curl http://192.168.1.10/api/v1/thresholds
+{"count":3,"thresholds":[{"index":1,"enabled":true,"sensor_index":1,"temperature":40.00,"tone_hz":1400,"triggered":false},{"index":2,"enabled":true,"sensor_index":1,"temperature":70.00,"tone_hz":2100,"triggered":false},{"index":3,"enabled":true,"sensor_index":1,"temperature":100.00,"tone_hz":2600,"triggered":false}]}
+
+$ curl -X PUT http://192.168.1.10/api/v1/thresholds/2 \
+    -d '{"sensor_index":1,"temperature":75.5,"tone_hz":2100,"enabled":true}'
+{"index":2,"enabled":true,"sensor_index":1,"temperature":75.50,"tone_hz":2100,"triggered":false}
+```
+
+`sensor_index` and `tone_hz` (16 to 20000 Hz) are required; `enabled`
+defaults to `true` when omitted. Reconfiguring a slot re-arms it. Only one
+tone can play at a time: if several thresholds are exceeded simultaneously,
+the most severe (highest-indexed) one wins for that measurement cycle; the
+others are still marked as acknowledged, so they do not queue up and beep
+later on their own.
+
+#### `POST /api/v1/buzzer/test`
+
+Sounds the same short confirmation tone played at boot, independent of any
+configured threshold.
+
+```console
+$ curl -X POST http://192.168.1.10/api/v1/buzzer/test
+{"result":"ok"}
 ```
 
 ---
