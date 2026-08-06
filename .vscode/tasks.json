@@ -1,0 +1,56 @@
+{
+  // See https://go.microsoft.com/fwlink/?LinkId=733558
+  // for the documentation about the tasks.json format
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Make Firmware",
+      "type": "shell",
+      "osx": {
+        "command": "gmake -j$(sysctl -n hw.ncpu) all TARGET=vsarm_firmware GCC_PATH=${env:VSARM}/arm-gcc/bin"
+      },
+      "linux": {
+        "command": "gmake -j$(nproc) all TARGET=vsarm_firmware GCC_PATH=${env:VSARM}/arm-gcc/bin"
+      },
+      "options": {
+        "cwd": "${workspaceRoot}"
+      },
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Load Firmware",
+      "type": "shell",
+      "osx": {
+        // "command": "/Applications/SEGGER/JLink/JLinkExe -speed 6000 -if swd -device STM32F103C8 ./flash.jlink"
+        "command": "st-flash --reset write ${workspaceRoot}/build/vsarm_firmware.bin 0x08000000"
+      },
+      "linux": {
+        "command": "st-flash --reset write ${workspaceRoot}/build/vsarm_firmware.bin 0x08000000"
+      },
+      "options": {
+        "cwd": "${workspaceRoot}"
+      },
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Make Clean",
+      "type": "shell",
+      "command": "make clean"
+    },
+    {
+      "type": "cmake",
+      "label": "CMake: clean",
+      "command": "clean",
+      "problemMatcher": [],
+      "detail": "CMake template clean task"
+    }
+  ]
+}

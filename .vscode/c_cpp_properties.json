@@ -1,0 +1,107 @@
+{
+   "configurations": [
+      {
+         "name": "MacOS",
+         "includePath": [
+            "${env:VSARM}/arm-gcc/arm-none-eabi/include/c++/14.2.1",
+            "${env:VSARM}/arm-gcc/arm-none-eabi/include/c++/14.2.1/arm-none-eabi",
+            "${env:VSARM}/arm-gcc/arm-none-eabi/include/c++/14.2.1/backward",
+            "${env:VSARM}/arm-gcc/lib/gcc/arm-none-eabi/14.2.1/include",
+            "${env:VSARM}/arm-gcc/lib/gcc/arm-none-eabi/14.2.1/include-fixed",
+            "${env:VSARM}/arm-gcc/arm-none-eabi/include",
+            "${workspaceRoot}/Drivers/CMSIS/Include",
+            "${workspaceRoot}/Drivers/CMSIS/Device/ST/STM32F1xx/Include",
+            "${workspaceRoot}/Drivers/STM32F10x_StdPeriph_Driver/inc",
+            "${workspaceRoot}/Core/Inc",
+            "${workspaceRoot}/Periph/Inc",
+            "${workspaceRoot}/Srv/Inc",
+            "${workspaceRoot}/FreeRTOS-Kernel/include",
+            "${workspaceRoot}/FreeRTOS-Kernel/portable/GCC/ARM_CM3",
+            "${workspaceRoot}/Ethernet"
+         ],
+         "defines": [
+            "DEBUG",
+            "DEFAULT_STACK_SIZE=2048",
+            "USE_DEVICE_MODE",
+            "USE_FULL_ASSERT",
+            "HSE_VALUE=8000000",
+            "HSE_STARTUP_TIMEOUT=100",
+            "LSE_STARTUP_TIMEOUT=5000",
+            "LSE_VALUE=32768",
+            "HSI_VALUE=16000000",
+            "LSI_VALUE=40000",
+            "VDD_VALUE=3300",
+            "PREFETCH_ENABLE=1",
+            "STM32F103xB",
+            // "ITM_OUT=0",
+            "USE_WH_DISPLAY",
+            // "USE_SSD_DISPLAY",
+            "USART_OUT=USART1"
+         ],
+         "intelliSenseMode": "macos-clang-arm64",
+         "cStandard": "c23",
+         "cppStandard": "c++23",
+         "browse": {
+            "path": [
+               "${workspaceRoot}",
+               "${env:VSARM}/arm-gcc",
+               "${env:VSARM}/cache"
+            ],
+            "limitSymbolsToIncludedHeaders": false,
+            "databaseFilename": ""
+         }
+      },
+      {
+         "name": "Linux",
+         "includePath": [
+            "${env:VSARM}/arm-gcc/arm-none-eabi/include/c++/14.2.1",
+            "${env:VSARM}/arm-gcc/arm-none-eabi/include/c++/14.2.1/arm-none-eabi",
+            "${env:VSARM}/arm-gcc/arm-none-eabi/include/c++/14.2.1/backward",
+            "${env:VSARM}/arm-gcc/lib/gcc/arm-none-eabi/14.2.1/include",
+            "${env:VSARM}/arm-gcc/lib/gcc/arm-none-eabi/14.2.1/include-fixed",
+            "${env:VSARM}/arm-gcc/arm-none-eabi/include",
+            "${workspaceRoot}/Drivers/CMSIS/Include",
+            "${workspaceRoot}/Drivers/CMSIS/Device/ST/STM32F1xx/Include",
+            "${workspaceRoot}/Drivers/STM32F10x_StdPeriph_Driver/inc",
+            "${workspaceRoot}/Core/Inc",
+            "${workspaceRoot}/Periph/Inc",
+            "${workspaceRoot}/Srv/Inc",
+            "${workspaceRoot}/FreeRTOS-Kernel/include",
+            "${workspaceRoot}/FreeRTOS-Kernel/portable/GCC/ARM_CM3",
+            "${workspaceRoot}/Ethernet"
+         ],
+         "defines": [
+            "DEBUG",
+            "DEFAULT_STACK_SIZE=2048",
+            "USE_DEVICE_MODE",
+            "USE_FULL_ASSERT",
+            "HSE_VALUE=8000000",
+            "HSE_STARTUP_TIMEOUT=100",
+            "LSE_STARTUP_TIMEOUT=5000",
+            "LSE_VALUE=32768",
+            "HSI_VALUE=16000000",
+            "LSI_VALUE=40000",
+            "VDD_VALUE=3300",
+            "PREFETCH_ENABLE=1",
+            "STM32F103xB",
+            // "ITM_OUT=0",
+            "USE_WH_DISPLAY",
+            // "USE_SSD_DISPLAY",
+            "USART_OUT=USART1"
+         ],
+         "intelliSenseMode": "linux-gcc-x64",
+         "cStandard": "c23",
+         "cppStandard": "c++23",
+         "browse": {
+            "path": [
+               "${workspaceRoot}",
+               "${env:VSARM}/arm-gcc",
+               "${env:VSARM}/cache"
+            ],
+            "limitSymbolsToIncludedHeaders": false,
+            "databaseFilename": ""
+         }
+      }
+   ],
+   "version": 4
+}
