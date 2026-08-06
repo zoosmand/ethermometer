@@ -17,7 +17,9 @@ FAIL_COUNT=0
 : > "${LOG_FILE}"
 
 log() {
-  printf '%s\n' "$*" | tee -a "${LOG_FILE}"
+  # Written to stderr (not stdout) so it never collects into a caller's
+  # $(expect_contains ...) capture, which uses stdout to return the body.
+  printf '%s\n' "$*" | tee -a "${LOG_FILE}" >&2
 }
 
 # Performs one HTTP request and prints "<status_code>\n<body>".
@@ -93,7 +95,7 @@ else
   done
 fi
 
-expect_contains GET /api/v1/sensors/0 404 '"error":"sensor_not_found"' >/dev/null
+expect_contains GET /api/v1/sensors/0 404 '"error":"not_found"' >/dev/null
 expect_contains GET /api/v1/sensors/250 404 '"error":"sensor_not_found"' >/dev/null
 
 expect_contains GET /api/v1/thresholds 200 '"count":3' >/dev/null
