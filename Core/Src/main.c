@@ -71,6 +71,10 @@ int main(void) {
     ApiService_Init();
   }
 
+  /* RTC reporting and NTP synchronization; syncs only while SPI1/Ethernet is
+   * healthy, but reports and prints locally either way. */
+  RtcService_Init();
+
   /* Run the internal health and watchdog service last. */
   HealthService_Init();
 
@@ -215,6 +219,11 @@ void SystemInit (void) {
   SET_BIT(RCC->AHBENR, (
       RCC_AHBENR_CRCEN
     | RCC_AHBENR_SRAMEN
+  ));
+
+  /* APB1 peripherals */
+  SET_BIT(RCC->APB1ENR, (
+      RCC_APB1ENR_BKPEN
   ));
 
   /* APB2 peripherals */

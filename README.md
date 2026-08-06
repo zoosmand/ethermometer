@@ -23,7 +23,7 @@ required header beyond `Content-Length` (sent automatically by `curl`).
 | Method | Path | Description |
 | --- | --- | --- |
 | `GET` | `/health` | General device status |
-| `GET` | `/api/v1/rtc` | Uptime and time-synchronization state |
+| `GET` | `/api/v1/rtc` | Current time and NTP synchronization state |
 | `GET` | `/api/v1/sensors` | Summary of every connected sensor |
 | `GET` | `/api/v1/sensors/<sensor_index>` | Full detail for one sensor |
 | `GET` | `/api/v1/temperature` | Temperature reading from every sensor |
@@ -50,18 +50,23 @@ self-check watchdog has latched a failure).
 
 ```console
 $ curl http://192.168.1.10/health
-{"status":"ok","uptime_ms":723041,"watchdog_latched":false,"peripherals":{"heartbeat_led":true,"usart1":true,"onewire":true,"eth_spi":true,"display":true,"buzzer":true}}
+{"status":"ok","uptime_ms":723041,"watchdog_latched":false,"peripherals":{"heartbeat_led":true,"usart1":true,"onewire":true,"eth_spi":true,"display":true,"buzzer":true,"rtc":true}}
 ```
 
 #### `GET /api/v1/rtc`
 
-The device has no wall-clock time source (no RTC has been set and no NTP
-client is implemented), so this reports free-running uptime instead;
-`synchronized` is always `false`.
+The device's backup-domain RTC is reset to zero on every boot (SystemInit
+forces a backup-domain reset every time, so nothing survives a reset without
+a battery), then synchronized against `pool.ntp.org` over UDP/123 as soon as
+the network comes up, and re-synchronized once an hour after that.
+`synchronized` is `false` until the first sync succeeds; `unix_time`/`iso8601`
+still advance from zero in the meantime, they just aren't wall-clock-accurate
+yet. The same reading is also printed once a minute via `printf()` (visible
+on the ITM/USART debug output), independent of the API.
 
 ```console
 $ curl http://192.168.1.10/api/v1/rtc
-{"uptime_ms":723041,"synchronized":false}
+{"unix_time":1767686400,"iso8601":"2026-01-06T12:00:00Z","synchronized":true,"last_sync_age_ms":142317,"sync_failures":0}
 ```
 
 #### `GET /api/v1/sensors`

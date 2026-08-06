@@ -14,6 +14,7 @@
 #include "main.h"
 #include "api_service.h"
 #include "threshold_service.h"
+#include "rtc_service.h"
 #include "socket.h"
 #include <string.h>
 
@@ -724,7 +725,7 @@ static void apiService_HandleHealth(void) {
     "{\"status\":\"%s\",\"uptime_ms\":%lu,\"watchdog_latched\":%s,"
     "\"peripherals\":{"
       "\"heartbeat_led\":%s,\"usart1\":%s,\"onewire\":%s,\"eth_spi\":%s,"
-      "\"display\":%s,\"buzzer\":%s"
+      "\"display\":%s,\"buzzer\":%s,\"rtc\":%s"
     "}}",
     status,
     (unsigned long)(xTaskGetTickCount() * portTICK_PERIOD_MS),
@@ -734,7 +735,8 @@ static void apiService_HandleHealth(void) {
     apiService_BoolText(!FLAG_CHECK(peripheralReadiness, PERIPHERAL_ONEWIRE_ERROR_BIT)),
     apiService_BoolText(!FLAG_CHECK(peripheralReadiness, PERIPHERAL_SPI1_ERROR_BIT)),
     apiService_BoolText(!FLAG_CHECK(peripheralReadiness, PERIPHERAL_WH_DISPLAY_ERROR_BIT)),
-    apiService_BoolText(!FLAG_CHECK(peripheralReadiness, PERIPHERAL_BUZZER_ERROR_BIT))
+    apiService_BoolText(!FLAG_CHECK(peripheralReadiness, PERIPHERAL_BUZZER_ERROR_BIT)),
+    apiService_BoolText(!FLAG_CHECK(peripheralReadiness, PERIPHERAL_RTC_ERROR_BIT))
   );
   apiService_Respond(200U, "OK", body);
 }
@@ -744,12 +746,28 @@ static void apiService_HandleHealth(void) {
 
 // -------------------------------------------------------------
 static void apiService_HandleRtc(void) {
-  char body[64];
+  RtcStatus_TypeDef rtcStatus;
+  RtcService_GetStatus(&rtcStatus);
+
+  char iso8601[32];
+  RtcService_FormatIso8601(rtcStatus.unixTime, iso8601, sizeof(iso8601));
+
+  char lastSyncField[16] = "null";
+  if (rtcStatus.synchronized == pdTRUE) {
+    (void)snprintf(lastSyncField, sizeof(lastSyncField), "%lu", (unsigned long)rtcStatus.lastSyncAgeMs);
+  }
+
+  char body[160];
   (void)snprintf(
     body,
     sizeof(body),
-    "{\"uptime_ms\":%lu,\"synchronized\":false}",
-    (unsigned long)(xTaskGetTickCount() * portTICK_PERIOD_MS)
+    "{\"unix_time\":%lu,\"iso8601\":\"%s\",\"synchronized\":%s,"
+    "\"last_sync_age_ms\":%s,\"sync_failures\":%u}",
+    (unsigned long)rtcStatus.unixTime,
+    iso8601,
+    apiService_BoolText(rtcStatus.synchronized),
+    lastSyncField,
+    rtcStatus.consecutiveFailures
   );
   apiService_Respond(200U, "OK", body);
 }
