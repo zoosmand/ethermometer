@@ -23,7 +23,7 @@
 typedef enum {
   HEALTH_COMPONENT_HEART_BEAT  = (1UL << 0U),
   HEALTH_COMPONENT_TEMPERATURE = (1UL << 1U),
-  HEALTH_COMPONENT_TCP         = (1UL << 2U)
+  HEALTH_COMPONENT_API         = (1UL << 2U)
 } HealthComponent_TypeDef;
 
 /**
@@ -50,5 +50,11 @@ void HealthService_Report(HealthComponent_TypeDef);
   * within four seconds after allowing for the uncalibrated LSI tolerance.
   */
 void HealthService_LatchFailure(void);
+
+/**
+  * @brief Report whether a failure has been latched.
+  * @retval (BaseType_t) pdTRUE when the watchdog has stopped being reloaded.
+  */
+BaseType_t HealthService_IsLatched(void);
 
 #endif /* __HEALTH_SERVICE_H */

@@ -13,6 +13,7 @@
 
 #include "temperature_service.h"
 #include "ds18b20.h"
+#include "threshold_service.h"
 #include <string.h>
 
 #define TEMPERATURE_SERVICE_PERIOD_MS 7000U
@@ -136,6 +137,7 @@ static void temperatureSensorService_Task(void* parameters) {
       ds18b20Measurements,
       ds18b20Count
     );
+    ThresholdService_Evaluate();
     HealthService_Report(HEALTH_COMPONENT_TEMPERATURE);
 
     memoryReportCounter++;

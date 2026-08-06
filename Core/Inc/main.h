@@ -49,7 +49,8 @@ extern "C" {
 #include "heart_beat.h"
 #include "health_service.h"
 #include "temperature_service.h"
-#include "tcp_service.h"
+#include "threshold_service.h"
+#include "api_service.h"
 
 #include "wizchip_port.h"
 

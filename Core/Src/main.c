@@ -63,11 +63,12 @@ int main(void) {
 
   /* Run the Temperature Measurement Service */
   OneWireBusConfiguration_Init();
+  ThresholdService_Init();
   TemperatureSensorService_Init();
 
-  /* TCP command service */
+  /* HTTP API service */
   if (!FLAG_CHECK(peripheralReadiness, PERIPHERAL_SPI1_ERROR_BIT)) {
-    TcpCommandService_Init();
+    ApiService_Init();
   }
 
   /* Run the internal health and watchdog service last. */
