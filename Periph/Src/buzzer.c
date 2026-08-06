@@ -19,8 +19,6 @@
 #define BUZZER_PIN                  GPIO_PIN_8
 #define BUZZER_TIMER_CLOCK_HZ       72000000UL
 #define BUZZER_TIMER_TICK_HZ         1000000UL
-#define BUZZER_MIN_FREQUENCY_HZ           16U
-#define BUZZER_MAX_FREQUENCY_HZ        20000U
 
 
 // -------------------------------------------------------------

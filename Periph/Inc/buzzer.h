@@ -23,6 +23,8 @@ extern "C" {
 
 #define BUZZER_SELF_TEST_FREQUENCY_HZ  2000U
 #define BUZZER_SELF_TEST_DURATION_MS    200U
+#define BUZZER_MIN_FREQUENCY_HZ           16U
+#define BUZZER_MAX_FREQUENCY_HZ        20000U
 
 /**
   * @brief Configure PA8 and TIM1 channel 1 for passive-buzzer PWM.

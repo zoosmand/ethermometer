@@ -75,6 +75,14 @@ void HealthService_LatchFailure(void) {
 
 
 // -------------------------------------------------------------
+BaseType_t HealthService_IsLatched(void) {
+  return (emergencyLatched);
+}
+
+
+
+
+// -------------------------------------------------------------
 static void healthService_Task(void* parameters) {
   (void)parameters;
   TickType_t lastCheck = xTaskGetTickCount();
