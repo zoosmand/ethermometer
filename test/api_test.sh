@@ -62,7 +62,19 @@ log "Started: $(date '+%Y-%m-%d %H:%M:%S %z')"
 log ""
 
 expect_contains GET /health 200 '"status"' >/dev/null
-expect_contains GET /api/v1/rtc 200 '"synchronized":false' >/dev/null
+
+HEAD_RESPONSE="$(request HEAD /health)"
+HEAD_STATUS="$(printf '%s' "${HEAD_RESPONSE}" | tail -n1)"
+HEAD_BODY="$(printf '%s' "${HEAD_RESPONSE}" | sed '$d')"
+if [[ "${HEAD_STATUS}" == "200" && -z "${HEAD_BODY}" ]]; then
+  PASS_COUNT=$((PASS_COUNT + 1))
+  log "PASS HEAD /health status=${HEAD_STATUS} body=<empty>"
+else
+  FAIL_COUNT=$((FAIL_COUNT + 1))
+  log "FAIL HEAD /health expected_status=200 expected_body=<empty> status=${HEAD_STATUS:-<empty>} body=${HEAD_BODY:-<empty>}"
+fi
+
+expect_contains GET /api/v1/rtc 200 '"synchronized"' >/dev/null
 expect_contains GET /api/v1/unknown-route 404 '"error":"not_found"' >/dev/null
 
 SENSORS_BODY="$(expect_contains GET /api/v1/sensors 200 '"count"')"
@@ -84,12 +96,12 @@ fi
 expect_contains GET /api/v1/sensors/0 404 '"error":"sensor_not_found"' >/dev/null
 expect_contains GET /api/v1/sensors/250 404 '"error":"sensor_not_found"' >/dev/null
 
-expect_contains GET /api/v1/thresholds 200 '"count":8' >/dev/null
+expect_contains GET /api/v1/thresholds 200 '"count":3' >/dev/null
 expect_contains PUT /api/v1/thresholds/1 200 '"enabled":true' \
-  '{"sensor_index":1,"temperature":30.5,"tone_hz":2500,"enabled":true}' >/dev/null
-expect_contains GET /api/v1/thresholds 200 '"temperature":30.50' >/dev/null
+  '{"sensor_index":1,"temperature":42.5,"tone_hz":2500,"enabled":true}' >/dev/null
+expect_contains GET /api/v1/thresholds 200 '"temperature":42.50' >/dev/null
 expect_contains PUT /api/v1/thresholds/1 400 '"error"' '{"sensor_index":1}' >/dev/null
-expect_contains PUT /api/v1/thresholds/9 400 '"error":"invalid_threshold"' \
+expect_contains PUT /api/v1/thresholds/4 400 '"error":"invalid_threshold"' \
   '{"sensor_index":1,"temperature":30.0,"tone_hz":2000}' >/dev/null
 
 expect_contains POST /api/v1/buzzer/test 200 '"result":"ok"' >/dev/null

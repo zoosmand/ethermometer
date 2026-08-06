@@ -27,7 +27,8 @@ typedef enum {
   API_METHOD_UNKNOWN = 0U,
   API_METHOD_GET,
   API_METHOD_POST,
-  API_METHOD_PUT
+  API_METHOD_PUT,
+  API_METHOD_HEAD
 } ApiMethod_TypeDef;
 
 static uint8_t requestBuffer[API_REQUEST_BUFFER_SIZE];
@@ -261,6 +262,8 @@ static ErrorStatus apiService_ParseRequestLine(void) {
     requestMethod = API_METHOD_POST;
   } else if ((methodEnd == 3U) && (memcmp(requestBuffer, "PUT", 3U) == 0)) {
     requestMethod = API_METHOD_PUT;
+  } else if ((methodEnd == 4U) && (memcmp(requestBuffer, "HEAD", 4U) == 0)) {
+    requestMethod = API_METHOD_HEAD;
   } else {
     requestMethod = API_METHOD_UNKNOWN;
   }
@@ -340,7 +343,8 @@ static void apiService_Dispatch(void) {
   uint16_t bodyLength = (uint16_t)contentLength;
   uint8_t index;
 
-  if ((requestMethod == API_METHOD_GET) && (apiService_PathIs(path, pathLength, "/health") == pdTRUE)) {
+  if (((requestMethod == API_METHOD_GET) || (requestMethod == API_METHOD_HEAD))
+      && (apiService_PathIs(path, pathLength, "/health") == pdTRUE)) {
     apiService_HandleHealth();
   } else if ((requestMethod == API_METHOD_GET) && (apiService_PathIs(path, pathLength, "/api/v1/rtc") == pdTRUE)) {
     apiService_HandleRtc();
@@ -702,7 +706,8 @@ static ErrorStatus apiService_Finish(void) {
 
 // -------------------------------------------------------------
 static void apiService_Respond(uint16_t statusCode, const char* statusText, const char* jsonBody) {
-  if (apiService_SendStatusHeader(statusCode, statusText) == SUCCESS) {
+  if ((apiService_SendStatusHeader(statusCode, statusText) == SUCCESS)
+      && (requestMethod != API_METHOD_HEAD)) {
     (void)apiService_SendText(jsonBody);
   }
   (void)apiService_Finish();

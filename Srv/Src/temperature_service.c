@@ -16,7 +16,7 @@
 #include "threshold_service.h"
 #include <string.h>
 
-#define TEMPERATURE_SERVICE_PERIOD_MS 7000U
+#define TEMPERATURE_SERVICE_PERIOD_MS 5000U
 #define SENSOR_STALE_PERIOD_MS        (TEMPERATURE_SERVICE_PERIOD_MS * 3U)
 #define SENSOR_FAILURE_THRESHOLD      3U
 #define MEMORY_REPORT_CYCLES          10U
@@ -51,6 +51,10 @@ static void temperatureSensorService_ApplyAge(SensorSnapshot_TypeDef*);
 static void temperatureSensorService_ReportMemory(void);
 static UBaseType_t temperatureSensorService_GetStackMargin(const char*);
 static void temperatureSensorService_PrintCentiDegrees(int32_t);
+#if defined(USE_WH_DISPLAY)
+static void temperatureSensorService_UpdateDisplay(void);
+static void temperatureSensorService_DisplayCentiDegrees(int32_t);
+#endif
 
 
 
@@ -137,6 +141,9 @@ static void temperatureSensorService_Task(void* parameters) {
       ds18b20Measurements,
       ds18b20Count
     );
+    #if defined(USE_WH_DISPLAY)
+      temperatureSensorService_UpdateDisplay();
+    #endif
     ThresholdService_Evaluate();
     HealthService_Report(HEALTH_COMPONENT_TEMPERATURE);
 
@@ -375,3 +382,55 @@ static void temperatureSensorService_PrintCentiDegrees(int32_t centiDegrees) {
     (unsigned long)(magnitude % 100U)
   );
 }
+
+
+
+
+// -------------------------------------------------------------
+#if defined(USE_WH_DISPLAY)
+/**
+  * @brief Redraw the display with "index:temperature" for every sensor.
+  *
+  * Sensors are separated by a single space rather than a newline, because in
+  * the display's current single-line mode a newline clears the whole screen
+  * before drawing the next entry.
+  */
+static void temperatureSensorService_UpdateDisplay(void) {
+  if (FLAG_CHECK(peripheralReadiness, PERIPHERAL_WH_DISPLAY_ERROR_BIT)) return;
+
+  (void)WHxxxx_Clear();
+  for (uint8_t i = 0U; i < sensorSnapshotCount; i++) {
+    if (i > 0U) DSPL_OUT(' ');
+
+    char indexBuffer[8];
+    int indexLength = snprintf(indexBuffer, sizeof(indexBuffer), "%u:", (unsigned int)(i + 1U));
+    for (int c = 0; c < indexLength; c++) DSPL_OUT(indexBuffer[c]);
+
+    if (sensorSnapshots[i].dataValid == pdTRUE) {
+      temperatureSensorService_DisplayCentiDegrees(sensorSnapshots[i].temperature);
+    } else {
+      DSPL_OUT('-');
+    }
+  }
+}
+
+
+
+
+// -------------------------------------------------------------
+static void temperatureSensorService_DisplayCentiDegrees(int32_t centiDegrees) {
+  uint32_t magnitude = (centiDegrees < 0)
+    ? (uint32_t)(-centiDegrees)
+    : (uint32_t)centiDegrees;
+  char buffer[16];
+  int length = snprintf(
+    buffer,
+    sizeof(buffer),
+    "%s%lu.%02lu",
+    (centiDegrees < 0) ? "-" : "",
+    (unsigned long)(magnitude / 100U),
+    (unsigned long)(magnitude % 100U)
+  );
+  for (int c = 0; c < length; c++) DSPL_OUT(buffer[c]);
+}
+#endif /* USE_WH_DISPLAY */
