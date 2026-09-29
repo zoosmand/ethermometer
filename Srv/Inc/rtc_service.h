@@ -38,6 +38,7 @@ typedef struct {
   * The task waits for Ethernet address configuration, then attempts an NTP
   * sync against pool.ntp.org. It retries until successful, synchronizes once
   * per hour thereafter, and prints the current RTC reading once per minute.
+  * NTP synchronization is disabled when PB12 skips network initialization.
   */
 void RtcService_Init(void);
 

@@ -63,6 +63,7 @@ static StaticSemaphore_t w5500BusMutexStorage;
 static SemaphoreHandle_t w5500BusMutex;
 static volatile bool w5500AddressAssigned;
 static volatile BaseType_t w5500NetworkReady;
+static volatile BaseType_t w5500NetworkSkipped;
 static uint8_t w5500DhcpBuffer[W5500_DHCP_BUFFER_SIZE];
 static uint8_t w5500DnsBuffer[MAX_DNS_BUF_SIZE];
 static uint16_t w5500PingSequence;
@@ -102,9 +103,11 @@ int W5500_Init(void) {
 
   w5500Network = w5500DefaultNetwork;
   w5500NetworkReady = pdFALSE;
+  w5500NetworkSkipped = pdFALSE;
   w5500StartupPending = pdFALSE;
 
   if (w5500_IsSkipRequested() == pdTRUE) {
+    w5500NetworkSkipped = pdTRUE;
     printf("W5500 network configuration skipped (PB12 low)\n");
     return (0);
   }
@@ -142,6 +145,12 @@ int W5500_Init(void) {
 // -------------------------------------------------------------
 BaseType_t W5500_IsReady(void) {
   return w5500NetworkReady;
+}
+
+
+// -------------------------------------------------------------
+BaseType_t W5500_IsSkipped(void) {
+  return w5500NetworkSkipped;
 }
 
 

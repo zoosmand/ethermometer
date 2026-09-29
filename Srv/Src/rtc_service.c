@@ -54,16 +54,18 @@ void RtcService_Init(void) {
     FLAG_SET(peripheralReadiness, PERIPHERAL_RTC_ERROR_BIT);
   }
 
-  dnsTimer = xTimerCreateStatic(
-    "RTC DNS tick",
-    pdMS_TO_TICKS(1000U),
-    pdTRUE,
-    NULL,
-    rtcService_DnsTimer,
-    &dnsTimerStorage
-  );
-  if ((dnsTimer == NULL) || (xTimerStart(dnsTimer, 0U) != pdPASS)) {
-    FLAG_SET(peripheralReadiness, PERIPHERAL_RTC_ERROR_BIT);
+  if (W5500_IsSkipped() != pdTRUE) {
+    dnsTimer = xTimerCreateStatic(
+      "RTC DNS tick",
+      pdMS_TO_TICKS(1000U),
+      pdTRUE,
+      NULL,
+      rtcService_DnsTimer,
+      &dnsTimerStorage
+    );
+    if ((dnsTimer == NULL) || (xTimerStart(dnsTimer, 0U) != pdPASS)) {
+      FLAG_SET(peripheralReadiness, PERIPHERAL_RTC_ERROR_BIT);
+    }
   }
 
   TaskHandle_t task = xTaskCreateStatic(
@@ -133,13 +135,15 @@ static void rtcService_Task(void* parameters) {
   (void)parameters;
   TickType_t lastWakeTime;
   uint32_t ticksSinceSync = 0U;
+  BaseType_t ntpEnabled = (W5500_IsSkipped() != pdTRUE) ? pdTRUE : pdFALSE;
 
   /* Do not race the network task at scheduler startup. The barrier is
    * released only after the first address-configuration pass completes. */
-  while (W5500_WaitStartup(pdMS_TO_TICKS(1000U)) != pdTRUE) {
+  while ((ntpEnabled == pdTRUE)
+      && (W5500_WaitStartup(pdMS_TO_TICKS(1000U)) != pdTRUE)) {
     HealthService_Report(HEALTH_COMPONENT_RTC);
   }
-  if (W5500_IsReady() == pdTRUE) {
+  if ((ntpEnabled == pdTRUE) && (W5500_IsReady() == pdTRUE)) {
     (void)rtcService_Sync();
   }
   rtcService_PrintTime();
@@ -152,7 +156,8 @@ static void rtcService_Task(void* parameters) {
     ticksSinceSync++;
     /* The network comes up after boot, so retry each period until the
      * first successful sync, then fall back to the hourly schedule. */
-    if (((ticksSinceSync >= NTP_SYNC_PERIOD_TICKS) || (synchronized != pdTRUE))
+    if ((ntpEnabled == pdTRUE)
+        && ((ticksSinceSync >= NTP_SYNC_PERIOD_TICKS) || (synchronized != pdTRUE))
         && (W5500_IsReady() == pdTRUE)) {
       ticksSinceSync = 0U;
       (void)rtcService_Sync();

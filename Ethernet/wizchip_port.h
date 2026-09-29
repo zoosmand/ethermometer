@@ -31,6 +31,9 @@ int W5500_Init(void);
 /** @brief Report whether link and network configuration are currently usable. */
 BaseType_t W5500_IsReady(void);
 
+/** @brief Report whether PB12 disabled network initialization at boot. */
+BaseType_t W5500_IsSkipped(void);
+
 /**
   * @brief Wait for the first network configuration pass to finish.
   * @param timeout (TickType_t) Maximum ticks to wait.
