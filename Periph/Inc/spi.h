@@ -34,6 +34,9 @@
 #define ETH_RST_PIN           GPIO_PIN_3
 #define ETH_INT_PORT          GPIOA
 #define ETH_INT_PIN           GPIO_PIN_1
+/* Active-low strap: tie to GND at boot to skip network configuration. */
+#define ETH_SKIP_PORT         GPIOB
+#define ETH_SKIP_PIN          GPIO_PIN_12
 
 #define SPI_BUS_TIMEOUT         10000 /* cycles timeout on SPI bus operations */
 

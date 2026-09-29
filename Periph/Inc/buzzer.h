@@ -20,6 +20,7 @@ extern "C" {
 
 #include <stdint.h>
 #include "misc.h"
+#include "FreeRTOS.h"
 
 #define BUZZER_SELF_TEST_FREQUENCY_HZ  2000U
 #define BUZZER_SELF_TEST_DURATION_MS    200U
@@ -52,6 +53,19 @@ void Buzzer_Stop(void);
   * but it cannot electrically confirm that the buzzer produced sound.
   */
 ErrorStatus Buzzer_SelfTest(void);
+
+/**
+  * @brief Emit the self-test tone after waiting at most the supplied interval.
+  * @param timeout (TickType_t) Maximum ticks to wait for buzzer ownership.
+  * @retval (ErrorStatus) ERROR when the buzzer is busy or the tone cannot start.
+  */
+ErrorStatus Buzzer_SelfTestWithTimeout(TickType_t timeout);
+
+/** @brief Acquire exclusive ownership for a complete buzzer pattern. */
+BaseType_t Buzzer_Lock(TickType_t timeout);
+
+/** @brief Release exclusive buzzer ownership. */
+void Buzzer_Unlock(void);
 
 #ifdef __cplusplus
 }

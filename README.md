@@ -13,6 +13,27 @@
 * [Naming conventions](docs/NAMING_CONVENTIONS.md)
 * [Postman collection](postman_collection.json) for the HTTP API
 
+### Ethernet
+
+The W5500 makes up to five reset-and-DHCP initialization attempts. After each
+reset it waits up to 5 s for the PHY link before sending DHCP traffic. If DHCP
+is unavailable, the fallback configuration is `192.168.1.50/24`, with gateway,
+DNS, and NTP at `192.168.1.1`; with a DHCP lease, NTP uses `pool.ntp.org`. The
+acquired IP address is printed and shown on the display. Link state is checked
+once per second and the gateway is pinged once per minute; link restoration or
+two missed gateway responses restart the full W5500/DHCP initialization
+sequence. Network setup runs in its own task, so boot is not delayed by it.
+
+Temperature measurement (and with it, threshold alarms) starts only after the
+first network configuration pass finishes: about 3–5 s normally, up to ~30 s
+with no cable and ~60 s with a link but no DHCP server. The acquired IP stays
+on the display for at least 10 s before temperatures replace it.
+
+To boot without networking, tie **PB12** to GND (a jumper or switch to GND,
+with a 10 kΩ pull-up from PB12 to 3.3 V). PB12 is sampled once at reset: low
+skips all W5500 configuration and measurement starts immediately; open (high)
+configures the network as above.
+
 ### HTTP API
 
 The device serves a small JSON REST API on TCP port 80. Every response has
@@ -40,8 +61,10 @@ slots (1 through 3). `HEAD /health` returns the same status line and headers
 as `GET /health` without a body, per usual HTTP semantics.
 
 Errors are returned as `{"error":"<reason>"}` with a matching HTTP status
-code: `400` for a malformed request or out-of-range value, `404` for an
-unknown route or sensor index, and `500` if a self-test genuinely fails.
+code: `400` for a malformed request or out-of-range value and `404` for an
+unknown route or sensor index. The buzzer test returns `503` with
+`{"error":"buzzer_busy"}` when an alarm
+pattern owns the buzzer for longer than one second.
 
 #### `GET /health`
 
@@ -151,7 +174,8 @@ later on their own.
 #### `POST /api/v1/buzzer/test`
 
 Sounds the same short confirmation tone played at boot, independent of any
-configured threshold.
+configured threshold. The request waits for an active alarm pattern for at
+most one second before returning `503` rather than blocking the API task.
 
 ```console
 $ curl -X POST http://192.168.1.10/api/v1/buzzer/test

@@ -46,12 +46,17 @@ void __attribute__((weak)) System_ErrorHandler(void) {
   * @retval the same symbol 
   */
 __STATIC_INLINE uint32_t ITM_SendCharChannel(uint32_t ch, uint32_t channel) {
-   /* ITM enabled and ITM Port enabled */
-  if (((ITM->TCR & ITM_TCR_ITMENA_Msk) != 0UL) && ((ITM->TER & (1 << channel)) != 0UL)) {
-    while (ITM->PORT[channel].u32 == 0UL) {
+  /* A debugger can leave the ITM enabled (it survives system resets) without
+   * routing the trace pins; the FIFO then never drains. Only write when SWO is
+   * actually wired out, and never wait forever for a free stimulus port. */
+  if (((ITM->TCR & ITM_TCR_ITMENA_Msk) != 0UL)
+      && ((ITM->TER & (1UL << channel)) != 0UL)
+      && ((DBGMCU->CR & DBGMCU_CR_TRACE_IOEN) != 0UL)) {
+    uint32_t spins = 10000U;
+    while ((ITM->PORT[channel].u32 == 0UL) && (--spins != 0U)) {
       __NOP();
     }
-    ITM->PORT[channel].u8 = (uint8_t)ch;
+    if (spins != 0U) ITM->PORT[channel].u8 = (uint8_t)ch;
   }
   return (ch);
 }
@@ -119,11 +124,15 @@ void assert_failed(uint8_t *file, uint32_t line);
 
 
 
+/* The cycle counter is shared by every task that busy-waits, so it is only
+ * ever enabled and never reset or stopped: a delay preempted by another delay
+ * must still see the counter running when it resumes. */
 __STATIC_INLINE void _DWT_Init(void) {
-  DWT->CYCCNT = 0;
-  DWT->CTRL |= DWT_CTRL_CYCEVTENA_Msk | DWT_CTRL_CYCCNTENA_Msk;
-  __DSB();
-  __ISB();
+  if ((DWT->CTRL & DWT_CTRL_CYCCNTENA_Msk) == 0U) {
+    DWT->CTRL |= DWT_CTRL_CYCCNTENA_Msk;
+    __DSB();
+    __ISB();
+  }
 }
 
 
@@ -133,7 +142,6 @@ void Delay_Microseconds(uint32_t us) {
   uint32_t const start = DWT->CYCCNT;
   uint32_t const ticks = us * (configCPU_CLOCK_HZ / 1000000U);
   while ((READ_REG(DWT->CYCCNT) - start) < ticks) { __asm volatile("nop"); }
-  DWT->CTRL &= ~(DWT_CTRL_CYCEVTENA_Msk | DWT_CTRL_CYCCNTENA_Msk);
 }
 
 

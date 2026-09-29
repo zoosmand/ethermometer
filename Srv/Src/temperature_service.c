@@ -63,8 +63,7 @@ static void temperatureSensorService_DisplayCentiDegrees(int32_t);
 void TemperatureSensorService_Init(void) {
   static StaticTask_t taskControlBlock;
   static StackType_t taskStack[configMINIMAL_STACK_SIZE * 4U];
-  HealthService_Register(HEALTH_COMPONENT_TEMPERATURE);
-  (void)xTaskCreateStatic(
+  TaskHandle_t task = xTaskCreateStatic(
     temperatureSensorService_Task,
     "Temperature",
     configMINIMAL_STACK_SIZE * 4U,
@@ -73,6 +72,11 @@ void TemperatureSensorService_Init(void) {
     taskStack,
     &taskControlBlock
   );
+  if (task != NULL) {
+    HealthService_Register(HEALTH_COMPONENT_TEMPERATURE);
+  } else {
+    HealthService_LatchFailure();
+  }
 }
 
 
@@ -121,8 +125,14 @@ ErrorStatus TemperatureSensorService_GetSnapshot(
 // -------------------------------------------------------------
 static void temperatureSensorService_Task(void* parameters) {
   (void)parameters;
-  TickType_t lastWakeTime = xTaskGetTickCount();
   uint8_t memoryReportCounter = 0U;
+
+  /* Measure only once the network is configured (or skipped). Keep reporting
+   * while waiting: configuration can outlast the health check period. */
+  while (W5500_WaitStartup(pdMS_TO_TICKS(1000U)) != pdTRUE) {
+    HealthService_Report(HEALTH_COMPONENT_TEMPERATURE);
+  }
+  TickType_t lastWakeTime = xTaskGetTickCount();
 
   while (1) {
     DS18B20_Measurement_TypeDef ds18b20Measurements[
@@ -347,14 +357,14 @@ static void temperatureSensorService_PrintMeasurements(
 // -------------------------------------------------------------
 static void temperatureSensorService_ReportMemory(void) {
   printf(
-    "Memory heap=%u min=%u stack=%u/%u/%u/%u/%u\n",
-    (unsigned int)xPortGetFreeHeapSize(),
-    (unsigned int)xPortGetMinimumEverFreeHeapSize(),
+    "Memory stack=%u/%u/%u/%u/%u/%u/%u\n",
     (unsigned int)temperatureSensorService_GetStackMargin("Heart Beat"),
     (unsigned int)temperatureSensorService_GetStackMargin("OW Bus Init"),
     (unsigned int)uxTaskGetStackHighWaterMark(NULL),
-    (unsigned int)temperatureSensorService_GetStackMargin("TCP Commands"),
-    (unsigned int)temperatureSensorService_GetStackMargin("Health")
+    (unsigned int)temperatureSensorService_GetStackMargin("API"),
+    (unsigned int)temperatureSensorService_GetStackMargin("RTC"),
+    (unsigned int)temperatureSensorService_GetStackMargin("Health"),
+    (unsigned int)temperatureSensorService_GetStackMargin("Network")
   );
 }
 
@@ -397,6 +407,7 @@ static void temperatureSensorService_PrintCentiDegrees(int32_t centiDegrees) {
   */
 static void temperatureSensorService_UpdateDisplay(void) {
   if (FLAG_CHECK(peripheralReadiness, PERIPHERAL_WH_DISPLAY_ERROR_BIT)) return;
+  if (W5500_IsDisplayHeld() == pdTRUE) return; /* the acquired IP is showing */
 
   (void)WHxxxx_Clear();
   for (uint8_t i = 0U; i < sensorSnapshotCount; i++) {

@@ -18,7 +18,6 @@
 #include "socket.h"
 #include <string.h>
 
-#define NTP_SERVER_HOST         "pool.ntp.org"
 #define NTP_PORT                 123U
 #define NTP_LOCAL_PORT           123U
 #define NTP_SOCKET                 4U
@@ -31,11 +30,11 @@
 static TickType_t lastSyncSuccess;
 static uint16_t consecutiveFailures;
 static BaseType_t synchronized;
+static uint32_t requestSequence;
 
 static void rtcService_Task(void*);
 static void rtcService_DnsTimer(TimerHandle_t);
 static ErrorStatus rtcService_Sync(void);
-static ErrorStatus rtcService_ResolveServer(uint8_t*);
 static ErrorStatus rtcService_RequestTime(const uint8_t*, uint32_t*);
 static void rtcService_RecordResult(ErrorStatus);
 static void rtcService_PrintTime(void);
@@ -55,18 +54,21 @@ void RtcService_Init(void) {
     FLAG_SET(peripheralReadiness, PERIPHERAL_RTC_ERROR_BIT);
   }
 
-  dnsTimer = xTimerCreateStatic(
-    "RTC DNS tick",
-    pdMS_TO_TICKS(1000U),
-    pdTRUE,
-    NULL,
-    rtcService_DnsTimer,
-    &dnsTimerStorage
-  );
-  if (dnsTimer != NULL) (void)xTimerStart(dnsTimer, 0U);
+  if (W5500_IsSkipped() != pdTRUE) {
+    dnsTimer = xTimerCreateStatic(
+      "RTC DNS tick",
+      pdMS_TO_TICKS(1000U),
+      pdTRUE,
+      NULL,
+      rtcService_DnsTimer,
+      &dnsTimerStorage
+    );
+    if ((dnsTimer == NULL) || (xTimerStart(dnsTimer, 0U) != pdPASS)) {
+      FLAG_SET(peripheralReadiness, PERIPHERAL_RTC_ERROR_BIT);
+    }
+  }
 
-  HealthService_Register(HEALTH_COMPONENT_RTC);
-  (void)xTaskCreateStatic(
+  TaskHandle_t task = xTaskCreateStatic(
     rtcService_Task,
     "RTC",
     256,
@@ -75,6 +77,11 @@ void RtcService_Init(void) {
     taskStack,
     &taskControlBlock
   );
+  if (task != NULL) {
+    HealthService_Register(HEALTH_COMPONENT_RTC);
+  } else {
+    HealthService_LatchFailure();
+  }
 }
 
 
@@ -128,8 +135,15 @@ static void rtcService_Task(void* parameters) {
   (void)parameters;
   TickType_t lastWakeTime;
   uint32_t ticksSinceSync = 0U;
+  BaseType_t ntpEnabled = (W5500_IsSkipped() != pdTRUE) ? pdTRUE : pdFALSE;
 
-  if (!FLAG_CHECK(peripheralReadiness, PERIPHERAL_SPI1_ERROR_BIT)) {
+  /* Do not race the network task at scheduler startup. The barrier is
+   * released only after the first address-configuration pass completes. */
+  while ((ntpEnabled == pdTRUE)
+      && (W5500_WaitStartup(pdMS_TO_TICKS(1000U)) != pdTRUE)) {
+    HealthService_Report(HEALTH_COMPONENT_RTC);
+  }
+  if ((ntpEnabled == pdTRUE) && (W5500_IsReady() == pdTRUE)) {
     (void)rtcService_Sync();
   }
   rtcService_PrintTime();
@@ -140,8 +154,11 @@ static void rtcService_Task(void* parameters) {
     vTaskDelayUntil(&lastWakeTime, pdMS_TO_TICKS(RTC_REPORT_PERIOD_MS));
 
     ticksSinceSync++;
-    if ((ticksSinceSync >= NTP_SYNC_PERIOD_TICKS)
-        && !FLAG_CHECK(peripheralReadiness, PERIPHERAL_SPI1_ERROR_BIT)) {
+    /* The network comes up after boot, so retry each period until the
+     * first successful sync, then fall back to the hourly schedule. */
+    if ((ntpEnabled == pdTRUE)
+        && ((ticksSinceSync >= NTP_SYNC_PERIOD_TICKS) || (synchronized != pdTRUE))
+        && (W5500_IsReady() == pdTRUE)) {
       ticksSinceSync = 0U;
       (void)rtcService_Sync();
     }
@@ -167,10 +184,10 @@ static ErrorStatus rtcService_Sync(void) {
   uint8_t serverAddress[4];
   uint32_t unixTime;
 
-  if (rtcService_ResolveServer(serverAddress) != SUCCESS) {
-    rtcService_RecordResult(ERROR);
-    return (ERROR);
-  }
+  /* Readiness can change after the caller's scheduling-time check. */
+  if (W5500_IsReady() != pdTRUE) return (ERROR);
+  W5500_GetNtpServer(serverAddress);
+  if (W5500_IsReady() != pdTRUE) return (ERROR);
   if (rtcService_RequestTime(serverAddress, &unixTime) != SUCCESS) {
     rtcService_RecordResult(ERROR);
     return (ERROR);
@@ -181,20 +198,12 @@ static ErrorStatus rtcService_Sync(void) {
   }
 
   rtcService_RecordResult(SUCCESS);
-  printf("NTP: synchronized with %s, unix_time=%lu\n", NTP_SERVER_HOST, (unsigned long)unixTime);
+  printf(
+    "NTP: synchronized with %u.%u.%u.%u, unix_time=%lu\n",
+    serverAddress[0], serverAddress[1], serverAddress[2], serverAddress[3],
+    (unsigned long)unixTime
+  );
   return (SUCCESS);
-}
-
-
-
-
-// -------------------------------------------------------------
-static ErrorStatus rtcService_ResolveServer(uint8_t* address) {
-  static const uint8_t host[] = NTP_SERVER_HOST;
-  uint8_t dnsServer[4];
-
-  W5500_GetDnsServer(dnsServer);
-  return (DNS_run(dnsServer, (uint8_t*)host, address) == 1) ? SUCCESS : ERROR;
 }
 
 
@@ -207,6 +216,18 @@ static ErrorStatus rtcService_RequestTime(const uint8_t* serverAddress, uint32_t
 
   memset(packet, 0, sizeof(packet));
   packet[0] = 0x23U; /* LI=0, VN=4, Mode=3 (client) */
+  uint32_t requestTick = xTaskGetTickCount();
+  uint32_t requestId = ++requestSequence;
+  packet[40] = (uint8_t)(requestTick >> 24U);
+  packet[41] = (uint8_t)(requestTick >> 16U);
+  packet[42] = (uint8_t)(requestTick >> 8U);
+  packet[43] = (uint8_t)requestTick;
+  packet[44] = (uint8_t)(requestId >> 24U);
+  packet[45] = (uint8_t)(requestId >> 16U);
+  packet[46] = (uint8_t)(requestId >> 8U);
+  packet[47] = (uint8_t)requestId;
+  uint8_t requestTimestamp[8];
+  memcpy(requestTimestamp, &packet[40], sizeof(requestTimestamp));
 
   (void)close(NTP_SOCKET);
   if (socket(NTP_SOCKET, Sn_MR_UDP, NTP_LOCAL_PORT, 0x00) != NTP_SOCKET) {
@@ -222,10 +243,23 @@ static ErrorStatus rtcService_RequestTime(const uint8_t* serverAddress, uint32_t
   TickType_t start = xTaskGetTickCount();
   while ((xTaskGetTickCount() - start) < pdMS_TO_TICKS(NTP_RESPONSE_TIMEOUT_MS)) {
     if (getSn_RX_RSR(NTP_SOCKET) >= NTP_PACKET_SIZE) {
-      uint8_t remoteAddress[4];
-      uint16_t remotePort;
+      uint8_t remoteAddress[4] = {0U};
+      uint16_t remotePort = 0U;
       int32_t received = recvfrom(NTP_SOCKET, packet, NTP_PACKET_SIZE, remoteAddress, &remotePort);
-      if (received == (int32_t)NTP_PACKET_SIZE) {
+      BaseType_t expectedEndpoint = (remotePort == NTP_PORT)
+        && (memcmp(remoteAddress, serverAddress, sizeof(remoteAddress)) == 0);
+      uint8_t leap = packet[0] >> 6U;
+      uint8_t mode = packet[0] & 0x07U;
+      uint8_t stratum = packet[1];
+      BaseType_t matchesRequest =
+        (memcmp(&packet[24], requestTimestamp, sizeof(requestTimestamp)) == 0);
+      if ((received == (int32_t)NTP_PACKET_SIZE)
+          && (expectedEndpoint == pdTRUE)
+          && (matchesRequest == pdTRUE)
+          && (leap != 3U)
+          && (mode == 4U)
+          && (stratum > 0U)
+          && (stratum < 16U)) {
         uint32_t ntpSeconds = ((uint32_t)packet[40] << 24)
           | ((uint32_t)packet[41] << 16)
           | ((uint32_t)packet[42] << 8)

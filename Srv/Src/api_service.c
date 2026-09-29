@@ -21,6 +21,7 @@
 #define API_SOCKET               2U
 #define API_PORT                 80U
 #define API_REQUEST_BUFFER_SIZE 512U
+#define API_BUZZER_WAIT_MS      1000U
 
 /** @brief HTTP method recognized by the router. */
 typedef enum {
@@ -47,7 +48,7 @@ static void apiService_ResetRequest(void);
 static ErrorStatus apiService_LocateHeaderEnd(uint16_t*);
 static ErrorStatus apiService_ParseRequestLine(void);
 static BaseType_t apiService_HeaderNameIs(const uint8_t*, uint16_t, const char*);
-static void apiService_ParseContentLength(void);
+static ErrorStatus apiService_ParseContentLength(void);
 static void apiService_Dispatch(void);
 static BaseType_t apiService_PathIs(const uint8_t*, uint16_t, const char*);
 static ErrorStatus apiService_ParseIndex(const uint8_t*, uint16_t, uint8_t*);
@@ -83,8 +84,7 @@ void ApiService_Init(void) {
   static StaticTask_t taskControlBlock;
   static StackType_t taskStack[512];
 
-  HealthService_Register(HEALTH_COMPONENT_API);
-  (void)xTaskCreateStatic(
+  TaskHandle_t task = xTaskCreateStatic(
     apiService_Task,
     "API",
     512,
@@ -93,6 +93,11 @@ void ApiService_Init(void) {
     taskStack,
     &taskControlBlock
   );
+  if (task != NULL) {
+    HealthService_Register(HEALTH_COMPONENT_API);
+  } else {
+    HealthService_LatchFailure();
+  }
 }
 
 
@@ -114,6 +119,7 @@ static void apiService_Task(void* parameters) {
 
 // -------------------------------------------------------------
 static void apiService_Run(void) {
+  if (W5500_IsReady() != pdTRUE) return;
   switch (getSn_SR(API_SOCKET)) {
     case SOCK_ESTABLISHED:
       if ((getSn_IR(API_SOCKET) & Sn_IR_CON) != 0U) {
@@ -199,7 +205,11 @@ static void apiService_Receive(void) {
         apiService_ResetRequest();
         return;
       }
-      apiService_ParseContentLength();
+      if (apiService_ParseContentLength() != SUCCESS) {
+        apiService_Respond(400U, "Bad Request", "{\"error\":\"invalid_content_length\"}");
+        apiService_ResetRequest();
+        return;
+      }
 
       uint16_t bodyCapacity = API_REQUEST_BUFFER_SIZE - headerEnd;
       if (contentLength > bodyCapacity) {
@@ -307,29 +317,46 @@ static BaseType_t apiService_HeaderNameIs(
 
 
 // -------------------------------------------------------------
-static void apiService_ParseContentLength(void) {
+static ErrorStatus apiService_ParseContentLength(void) {
   static const char headerName[] = "Content-Length:";
   size_t headerNameLength = strlen(headerName);
 
   contentLength = 0U;
+  BaseType_t found = pdFALSE;
   uint16_t lineStart = 0U;
   for (uint16_t i = 0U; (i + 1U) < headerEnd; i++) {
     if ((requestBuffer[i] == '\r') && (requestBuffer[i + 1U] == '\n')) {
       uint16_t lineLength = i - lineStart;
       if (apiService_HeaderNameIs(&requestBuffer[lineStart], lineLength, headerName) == pdTRUE) {
+        if (found == pdTRUE) return (ERROR);
+        found = pdTRUE;
         uint16_t cursor = lineStart + (uint16_t)headerNameLength;
-        while ((cursor < i) && (requestBuffer[cursor] == ' ')) cursor++;
-        uint32_t value = 0U;
-        while ((cursor < i) && (requestBuffer[cursor] >= '0') && (requestBuffer[cursor] <= '9')) {
-          value = (value * 10U) + (uint32_t)(requestBuffer[cursor] - '0');
+        while ((cursor < i)
+            && ((requestBuffer[cursor] == ' ') || (requestBuffer[cursor] == '\t'))) {
           cursor++;
         }
+        if ((cursor >= i) || (requestBuffer[cursor] < '0') || (requestBuffer[cursor] > '9')) {
+          return (ERROR);
+        }
+        uint32_t value = 0U;
+        while ((cursor < i) && (requestBuffer[cursor] >= '0') && (requestBuffer[cursor] <= '9')) {
+          uint32_t digit = (uint32_t)(requestBuffer[cursor] - '0');
+          if (value > ((UINT32_MAX - digit) / 10U)) return (ERROR);
+          value = (value * 10U) + digit;
+          cursor++;
+        }
+        while ((cursor < i)
+            && ((requestBuffer[cursor] == ' ') || (requestBuffer[cursor] == '\t'))) {
+          cursor++;
+        }
+        if (cursor != i) return (ERROR);
         contentLength = value;
       }
       lineStart = i + 2U;
       i++;
     }
   }
+  return (SUCCESS);
 }
 
 
@@ -447,9 +474,11 @@ static ErrorStatus apiService_ParseJsonNumber(
     if ((cursor < length) && (body[cursor] == '-')) { negative = pdTRUE; cursor++; }
     if ((cursor >= length) || (body[cursor] < '0') || (body[cursor] > '9')) return (ERROR);
 
-    int32_t whole = 0;
+    uint32_t whole = 0U;
     while ((cursor < length) && (body[cursor] >= '0') && (body[cursor] <= '9')) {
-      whole = (whole * 10) + (body[cursor] - '0');
+      uint32_t digit = (uint32_t)(body[cursor] - '0');
+      if (whole > ((UINT32_MAX - digit) / 10U)) return (ERROR);
+      whole = (whole * 10U) + digit;
       cursor++;
     }
 
@@ -467,8 +496,19 @@ static ErrorStatus apiService_ParseJsonNumber(
       while (fractionDigits < maxFractionDigits) { fraction *= 10; fractionDigits++; }
     }
 
-    int32_t result = (whole * (int32_t)scale) + fraction;
-    *value = negative ? -result : result;
+    uint32_t fractionValue = (uint32_t)fraction;
+    uint32_t limit = (negative == pdTRUE) ? ((uint32_t)INT32_MAX + 1U) : (uint32_t)INT32_MAX;
+    if ((whole > (limit / scale))
+        || ((whole == (limit / scale)) && (fractionValue > (limit % scale)))) {
+      return (ERROR);
+    }
+    uint32_t magnitude = (whole * scale) + fractionValue;
+    if ((negative == pdTRUE) && (magnitude == ((uint32_t)INT32_MAX + 1U))) {
+      *value = INT32_MIN;
+    } else {
+      int32_t signedMagnitude = (int32_t)magnitude;
+      *value = (negative == pdTRUE) ? -signedMagnitude : signedMagnitude;
+    }
     return (SUCCESS);
   }
   return (ERROR);
@@ -924,10 +964,10 @@ static void apiService_HandleTemperatureList(void) {
 
 // -------------------------------------------------------------
 static void apiService_HandleBuzzerTest(void) {
-  if (Buzzer_SelfTest() == SUCCESS) {
+  if (Buzzer_SelfTestWithTimeout(pdMS_TO_TICKS(API_BUZZER_WAIT_MS)) == SUCCESS) {
     apiService_Respond(200U, "OK", "{\"result\":\"ok\"}");
   } else {
-    apiService_Respond(500U, "Internal Server Error", "{\"result\":\"error\"}");
+    apiService_Respond(503U, "Service Unavailable", "{\"error\":\"buzzer_busy\"}");
   }
 }
 
