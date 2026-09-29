@@ -37,16 +37,12 @@
 #define W5500_ERROR_MUTEX            -1
 #define W5500_ERROR_SPI              -2
 #define W5500_ERROR_TASK             -3
-#define W5500_ERROR_CHIP             -4
+#define W5500_ERROR_SEMAPHORE        -4
 
 #define W5500_SELECT()  PIN_L(ETH_CS_PORT, ETH_CS_PIN)
 #define W5500_RELEASE() PIN_H(ETH_CS_PORT, ETH_CS_PIN)
 #define W5500_RESET_L() PIN_L(ETH_RST_PORT, ETH_RST_PIN)
 #define W5500_RESET_H() PIN_H(ETH_RST_PORT, ETH_RST_PIN)
-
-/* Socket n protocol register (Sn_PROTO), used by IPRAW sockets. */
-#define W5500_SN_PROTO(sn) \
-  (_W5500_IO_BASE_ + (0x0014UL << 8) + (WIZCHIP_SREG_BLOCK(sn) << 3))
 
 static const wiz_NetInfo w5500DefaultNetwork = {
   .mac = {0xaaU, 0xbbU, 0xccU, 0xddU, 0xeeU, 0xffU},
@@ -120,13 +116,9 @@ int W5500_Init(void) {
   reg_wizchip_cs_cbfunc(w5500_Select, w5500_Release);
   reg_wizchip_spi_cbfunc(w5500_ReadByte, w5500_WriteByte);
 
-  /* Only confirm the chip answers here; link negotiation and DHCP can take
-   * tens of seconds and run in the Network task so they never block boot. */
-  w5500_Reset();
-  if (w5500_InitializeChip() != SUCCESS) return (W5500_ERROR_CHIP);
-
   w5500Startup = xSemaphoreCreateBinaryStatic(&w5500StartupStorage);
-  w5500StartupPending = (w5500Startup != NULL) ? pdTRUE : pdFALSE;
+  if (w5500Startup == NULL) return (W5500_ERROR_SEMAPHORE);
+  w5500StartupPending = pdTRUE;
 
   /* Same priority as the API and RTC services: the WIZnet socket calls spin
    * while waiting for SEND_OK/ARP, and that must never delay temperature
@@ -480,10 +472,7 @@ static ErrorStatus w5500_PingGateway(void) {
   packet[2] = (uint8_t)(checksum >> 8U);
   packet[3] = (uint8_t)checksum;
 
-  (void)close(W5500_PING_SOCKET);
-  /* An IPRAW socket carries whatever protocol Sn_PROTO holds; set ICMP here
-   * rather than relying on socket() to do it. */
-  WIZCHIP_WRITE(W5500_SN_PROTO(W5500_PING_SOCKET), IPPROTO_ICMP);
+  /* socket() closes the old socket and programs Sn_PROTO for IPRAW mode. */
   if (socket(W5500_PING_SOCKET, Sn_MR_IPRAW, IPPROTO_ICMP, SF_IO_NONBLOCK)
       != W5500_PING_SOCKET) {
     return (ERROR);
