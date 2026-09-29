@@ -20,6 +20,7 @@ extern "C" {
 
 #include <stdint.h>
 #include "misc.h"
+#include "FreeRTOS.h"
 
 #define BUZZER_SELF_TEST_FREQUENCY_HZ  2000U
 #define BUZZER_SELF_TEST_DURATION_MS    200U
@@ -52,6 +53,12 @@ void Buzzer_Stop(void);
   * but it cannot electrically confirm that the buzzer produced sound.
   */
 ErrorStatus Buzzer_SelfTest(void);
+
+/** @brief Acquire exclusive ownership for a complete buzzer pattern. */
+BaseType_t Buzzer_Lock(TickType_t timeout);
+
+/** @brief Release exclusive buzzer ownership. */
+void Buzzer_Unlock(void);
 
 #ifdef __cplusplus
 }

@@ -63,8 +63,7 @@ static void temperatureSensorService_DisplayCentiDegrees(int32_t);
 void TemperatureSensorService_Init(void) {
   static StaticTask_t taskControlBlock;
   static StackType_t taskStack[configMINIMAL_STACK_SIZE * 4U];
-  HealthService_Register(HEALTH_COMPONENT_TEMPERATURE);
-  (void)xTaskCreateStatic(
+  TaskHandle_t task = xTaskCreateStatic(
     temperatureSensorService_Task,
     "Temperature",
     configMINIMAL_STACK_SIZE * 4U,
@@ -73,6 +72,11 @@ void TemperatureSensorService_Init(void) {
     taskStack,
     &taskControlBlock
   );
+  if (task != NULL) {
+    HealthService_Register(HEALTH_COMPONENT_TEMPERATURE);
+  } else {
+    HealthService_LatchFailure();
+  }
 }
 
 
@@ -347,13 +351,12 @@ static void temperatureSensorService_PrintMeasurements(
 // -------------------------------------------------------------
 static void temperatureSensorService_ReportMemory(void) {
   printf(
-    "Memory heap=%u min=%u stack=%u/%u/%u/%u/%u\n",
-    (unsigned int)xPortGetFreeHeapSize(),
-    (unsigned int)xPortGetMinimumEverFreeHeapSize(),
+    "Memory stack=%u/%u/%u/%u/%u/%u\n",
     (unsigned int)temperatureSensorService_GetStackMargin("Heart Beat"),
     (unsigned int)temperatureSensorService_GetStackMargin("OW Bus Init"),
     (unsigned int)uxTaskGetStackHighWaterMark(NULL),
-    (unsigned int)temperatureSensorService_GetStackMargin("TCP Commands"),
+    (unsigned int)temperatureSensorService_GetStackMargin("API"),
+    (unsigned int)temperatureSensorService_GetStackMargin("RTC"),
     (unsigned int)temperatureSensorService_GetStackMargin("Health")
   );
 }

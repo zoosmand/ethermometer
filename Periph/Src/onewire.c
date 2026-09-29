@@ -52,7 +52,7 @@ void OneWireBusConfiguration_Init(void) {
   static StaticTask_t oneWireBusConfigurationTaskTCB;
   static StackType_t oneWireBusConfigurationTaskStack[configMINIMAL_STACK_SIZE];
   
-  (void) xTaskCreateStatic(
+  TaskHandle_t task = xTaskCreateStatic(
     oneWireBusConfigurationTask,
     "OW Bus Init",
     configMINIMAL_STACK_SIZE,
@@ -61,6 +61,9 @@ void OneWireBusConfiguration_Init(void) {
     &(oneWireBusConfigurationTaskStack[0]),
     &(oneWireBusConfigurationTaskTCB)
   );
+  if ((oneWireMutex == NULL) || (task == NULL)) {
+    FLAG_SET(peripheralReadiness, PERIPHERAL_ONEWIRE_ERROR_BIT);
+  }
 }
 
 
@@ -156,9 +159,9 @@ ErrorStatus OneWire_Reset(void) {
 
   uint32_t p = irq_lock();
 
-  ONEWIRE_RELEASE;
-  Delay_Microseconds(580);
   ONEWIRE_DRIVE_LOW;
+  Delay_Microseconds(580);
+  ONEWIRE_RELEASE;
   Delay_Microseconds(15);
   
   int i = 0;
@@ -188,14 +191,14 @@ __STATIC_INLINE void OneWire_WriteBit(uint8_t bit) {
 
   uint32_t p = irq_lock();
 
-  ONEWIRE_RELEASE;
+  ONEWIRE_DRIVE_LOW;
   if (bit) {
     Delay_Microseconds(6);
-    ONEWIRE_DRIVE_LOW;
+    ONEWIRE_RELEASE;
     Delay_Microseconds(64);
   } else {
     Delay_Microseconds(60);
-    ONEWIRE_DRIVE_LOW;
+    ONEWIRE_RELEASE;
     Delay_Microseconds(10);
   }
 
@@ -218,9 +221,9 @@ uint8_t OneWire_ReadBit(void) {
 
   uint32_t p = irq_lock();
 
-  ONEWIRE_RELEASE;
-  Delay_Microseconds(6);
   ONEWIRE_DRIVE_LOW;
+  Delay_Microseconds(6);
+  ONEWIRE_RELEASE;
   Delay_Microseconds(9);
   uint8_t level = ONEWIRE_LEVEL;
   Delay_Microseconds(55);
@@ -319,7 +322,8 @@ __STATIC_INLINE ErrorStatus OneWire_Enumerate(uint8_t* addr) {
       *addr = curr;
 			curr = 0;
 			addr++;
-			prev = *addr;
+			/* There is no next ROM byte after bit 64. */
+			prev = (i < 64U) ? *addr : 0U;
 			bp = 8;
 		} else {
       prev >>= 1;
@@ -339,8 +343,16 @@ ErrorStatus OneWire_Search(void) {
   if (OneWire_Reset()) return (ERROR);
   lastfork = 65;
   for (uint8_t i = 0; i < NUM_DEVICES_ON_BUS; i++) {
-    if (OneWire_Enumerate(oneWireDevices[i].rom)) break;
-    oneWireDeviceCount++;
+    if (OneWire_Enumerate(oneWireDevices[oneWireDeviceCount].rom)) break;
+
+    uint8_t crc = 0U;
+    for (uint8_t byte = 0U; byte < 8U; byte++) {
+      crc = OneWire_CRC8(crc, oneWireDevices[oneWireDeviceCount].rom[byte]);
+    }
+    /* Only expose valid DS18B20-family devices to the temperature driver. */
+    if ((crc == 0U) && (oneWireDevices[oneWireDeviceCount].rom[0] == 0x28U)) {
+      oneWireDeviceCount++;
+    }
   }
   return (oneWireDeviceCount > 0U) ? SUCCESS : ERROR;
 }
@@ -384,8 +396,5 @@ OneWireDevice_TypeDef* OneWire_GetDevices(void) {
 uint8_t OneWire_GetDeviceCount(void) {
   return oneWireDeviceCount;
 }
-
-
-
 
 

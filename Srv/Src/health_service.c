@@ -32,7 +32,7 @@ void HealthService_Init(void) {
   static StaticTask_t taskControlBlock;
   static StackType_t taskStack[configMINIMAL_STACK_SIZE * 2U];
 
-  (void)xTaskCreateStatic(
+  if (xTaskCreateStatic(
     healthService_Task,
     "Health",
     configMINIMAL_STACK_SIZE * 2U,
@@ -40,7 +40,9 @@ void HealthService_Init(void) {
     configMAX_PRIORITIES - 1U,
     taskStack,
     &taskControlBlock
-  );
+  ) == NULL) {
+    System_ErrorHandler();
+  }
 }
 
 

@@ -14,11 +14,15 @@
 #include "buzzer.h"
 #include "common.h"
 #include "stm32f103xb.h"
+#include "semphr.h"
 
 #define BUZZER_PORT                 GPIOA
 #define BUZZER_PIN                  GPIO_PIN_8
 #define BUZZER_TIMER_CLOCK_HZ       72000000UL
 #define BUZZER_TIMER_TICK_HZ         1000000UL
+
+static StaticSemaphore_t buzzerMutexStorage;
+static SemaphoreHandle_t buzzerMutex;
 
 
 // -------------------------------------------------------------
@@ -50,7 +54,16 @@ ErrorStatus Buzzer_Init(void) {
   SET_BIT(TIM1->CR1, TIM_CR1_ARPE);
   SET_BIT(TIM1->EGR, TIM_EGR_UG);
 
-  return (SUCCESS);
+  buzzerMutex = xSemaphoreCreateMutexStatic(&buzzerMutexStorage);
+  return (buzzerMutex != NULL) ? SUCCESS : ERROR;
+}
+
+BaseType_t Buzzer_Lock(TickType_t timeout) {
+  return (buzzerMutex != NULL) ? xSemaphoreTake(buzzerMutex, timeout) : pdFALSE;
+}
+
+void Buzzer_Unlock(void) {
+  if (buzzerMutex != NULL) (void)xSemaphoreGive(buzzerMutex);
 }
 
 
@@ -93,12 +106,15 @@ void Buzzer_Stop(void) {
 
 // -------------------------------------------------------------
 ErrorStatus Buzzer_SelfTest(void) {
+  if (Buzzer_Lock(portMAX_DELAY) != pdTRUE) return (ERROR);
   if (Buzzer_Start(BUZZER_SELF_TEST_FREQUENCY_HZ) != SUCCESS) {
     Buzzer_Stop();
+    Buzzer_Unlock();
     return (ERROR);
   }
 
   Delay_Milliseconds(BUZZER_SELF_TEST_DURATION_MS);
   Buzzer_Stop();
+  Buzzer_Unlock();
   return (SUCCESS);
 }
