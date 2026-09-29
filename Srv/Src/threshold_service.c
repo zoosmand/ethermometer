@@ -69,6 +69,7 @@ void ThresholdService_Init(void) {
   thresholds[2].toneHz = 2600U;
 
   thresholdsMutex = xSemaphoreCreateMutexStatic(&thresholdsMutexBuffer);
+  if (thresholdsMutex == NULL) HealthService_LatchFailure();
 }
 
 
@@ -82,6 +83,7 @@ ErrorStatus ThresholdService_Get(uint8_t index, Threshold_TypeDef* threshold) {
     return (ERROR);
   }
 
+  if (thresholdsMutex == NULL) return (ERROR);
   (void)xSemaphoreTake(thresholdsMutex, portMAX_DELAY);
   *threshold = thresholds[index - 1U];
   (void)xSemaphoreGive(thresholdsMutex);
@@ -105,6 +107,7 @@ ErrorStatus ThresholdService_Set(
     return (ERROR);
   }
 
+  if (thresholdsMutex == NULL) return (ERROR);
   (void)xSemaphoreTake(thresholdsMutex, portMAX_DELAY);
   Threshold_TypeDef* slot = &thresholds[index - 1U];
   slot->sensorIndex = sensorIndex;
@@ -124,6 +127,7 @@ ErrorStatus ThresholdService_Set(
 
 // -------------------------------------------------------------
 void ThresholdService_Evaluate(void) {
+  if (thresholdsMutex == NULL) return;
   TickType_t now = xTaskGetTickCount();
   int8_t fireIndex = -1;
   uint32_t fireToneHz = 0U;
@@ -182,10 +186,12 @@ void ThresholdService_Evaluate(void) {
 
 // -------------------------------------------------------------
 static void thresholdService_PlayBeeps(uint32_t toneHz, uint8_t count) {
+  if (Buzzer_Lock(portMAX_DELAY) != pdTRUE) return;
   for (uint8_t i = 0U; i < count; i++) {
     if (i > 0U) vTaskDelay(pdMS_TO_TICKS(THRESHOLD_BEEP_GAP_MS));
     (void)Buzzer_Start(toneHz);
     vTaskDelay(pdMS_TO_TICKS(THRESHOLD_BEEP_DURATION_MS));
     Buzzer_Stop();
   }
+  Buzzer_Unlock();
 }

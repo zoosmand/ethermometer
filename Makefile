@@ -44,7 +44,6 @@ $(wildcard Periph/Src/*.c) \
 $(wildcard Srv/Src/*.c) \
 $(wildcard FreeRTOS-Kernel/*.c) \
 $(wildcard FreeRTOS-Kernel/portable/GCC/ARM_CM3/*.c) \
-FreeRTOS-Kernel/portable/MemMang/heap_4.c \
 $(wildcard Ethernet/*.c) \
 $(wildcard Ethernet/W5500/*.c) \
 $(wildcard Ethernet/DHCP/*.c) \

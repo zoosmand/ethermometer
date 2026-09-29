@@ -31,6 +31,7 @@
 static TickType_t lastSyncSuccess;
 static uint16_t consecutiveFailures;
 static BaseType_t synchronized;
+static uint32_t requestSequence;
 
 static void rtcService_Task(void*);
 static void rtcService_DnsTimer(TimerHandle_t);
@@ -63,10 +64,11 @@ void RtcService_Init(void) {
     rtcService_DnsTimer,
     &dnsTimerStorage
   );
-  if (dnsTimer != NULL) (void)xTimerStart(dnsTimer, 0U);
+  if ((dnsTimer == NULL) || (xTimerStart(dnsTimer, 0U) != pdPASS)) {
+    FLAG_SET(peripheralReadiness, PERIPHERAL_RTC_ERROR_BIT);
+  }
 
-  HealthService_Register(HEALTH_COMPONENT_RTC);
-  (void)xTaskCreateStatic(
+  TaskHandle_t task = xTaskCreateStatic(
     rtcService_Task,
     "RTC",
     256,
@@ -75,6 +77,11 @@ void RtcService_Init(void) {
     taskStack,
     &taskControlBlock
   );
+  if (task != NULL) {
+    HealthService_Register(HEALTH_COMPONENT_RTC);
+  } else {
+    HealthService_LatchFailure();
+  }
 }
 
 
@@ -207,6 +214,18 @@ static ErrorStatus rtcService_RequestTime(const uint8_t* serverAddress, uint32_t
 
   memset(packet, 0, sizeof(packet));
   packet[0] = 0x23U; /* LI=0, VN=4, Mode=3 (client) */
+  uint32_t requestTick = xTaskGetTickCount();
+  uint32_t requestId = ++requestSequence;
+  packet[40] = (uint8_t)(requestTick >> 24U);
+  packet[41] = (uint8_t)(requestTick >> 16U);
+  packet[42] = (uint8_t)(requestTick >> 8U);
+  packet[43] = (uint8_t)requestTick;
+  packet[44] = (uint8_t)(requestId >> 24U);
+  packet[45] = (uint8_t)(requestId >> 16U);
+  packet[46] = (uint8_t)(requestId >> 8U);
+  packet[47] = (uint8_t)requestId;
+  uint8_t requestTimestamp[8];
+  memcpy(requestTimestamp, &packet[40], sizeof(requestTimestamp));
 
   (void)close(NTP_SOCKET);
   if (socket(NTP_SOCKET, Sn_MR_UDP, NTP_LOCAL_PORT, 0x00) != NTP_SOCKET) {
@@ -222,10 +241,23 @@ static ErrorStatus rtcService_RequestTime(const uint8_t* serverAddress, uint32_t
   TickType_t start = xTaskGetTickCount();
   while ((xTaskGetTickCount() - start) < pdMS_TO_TICKS(NTP_RESPONSE_TIMEOUT_MS)) {
     if (getSn_RX_RSR(NTP_SOCKET) >= NTP_PACKET_SIZE) {
-      uint8_t remoteAddress[4];
-      uint16_t remotePort;
+      uint8_t remoteAddress[4] = {0U};
+      uint16_t remotePort = 0U;
       int32_t received = recvfrom(NTP_SOCKET, packet, NTP_PACKET_SIZE, remoteAddress, &remotePort);
-      if (received == (int32_t)NTP_PACKET_SIZE) {
+      BaseType_t expectedEndpoint = (remotePort == NTP_PORT)
+        && (memcmp(remoteAddress, serverAddress, sizeof(remoteAddress)) == 0);
+      uint8_t leap = packet[0] >> 6U;
+      uint8_t mode = packet[0] & 0x07U;
+      uint8_t stratum = packet[1];
+      BaseType_t matchesRequest =
+        (memcmp(&packet[24], requestTimestamp, sizeof(requestTimestamp)) == 0);
+      if ((received == (int32_t)NTP_PACKET_SIZE)
+          && (expectedEndpoint == pdTRUE)
+          && (matchesRequest == pdTRUE)
+          && (leap != 3U)
+          && (mode == 4U)
+          && (stratum > 0U)
+          && (stratum < 16U)) {
         uint32_t ntpSeconds = ((uint32_t)packet[40] << 24)
           | ((uint32_t)packet[41] << 16)
           | ((uint32_t)packet[42] << 8)

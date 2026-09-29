@@ -40,8 +40,10 @@ slots (1 through 3). `HEAD /health` returns the same status line and headers
 as `GET /health` without a body, per usual HTTP semantics.
 
 Errors are returned as `{"error":"<reason>"}` with a matching HTTP status
-code: `400` for a malformed request or out-of-range value, `404` for an
-unknown route or sensor index, and `500` if a self-test genuinely fails.
+code: `400` for a malformed request or out-of-range value and `404` for an
+unknown route or sensor index. The buzzer test returns `503` with
+`{"error":"buzzer_busy"}` when an alarm
+pattern owns the buzzer for longer than one second.
 
 #### `GET /health`
 
@@ -151,7 +153,8 @@ later on their own.
 #### `POST /api/v1/buzzer/test`
 
 Sounds the same short confirmation tone played at boot, independent of any
-configured threshold.
+configured threshold. The request waits for an active alarm pattern for at
+most one second before returning `503` rather than blocking the API task.
 
 ```console
 $ curl -X POST http://192.168.1.10/api/v1/buzzer/test
