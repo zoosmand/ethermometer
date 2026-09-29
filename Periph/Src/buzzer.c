@@ -106,7 +106,11 @@ void Buzzer_Stop(void) {
 
 // -------------------------------------------------------------
 ErrorStatus Buzzer_SelfTest(void) {
-  if (Buzzer_Lock(portMAX_DELAY) != pdTRUE) return (ERROR);
+  return Buzzer_SelfTestWithTimeout(portMAX_DELAY);
+}
+
+ErrorStatus Buzzer_SelfTestWithTimeout(TickType_t timeout) {
+  if (Buzzer_Lock(timeout) != pdTRUE) return (ERROR);
   if (Buzzer_Start(BUZZER_SELF_TEST_FREQUENCY_HZ) != SUCCESS) {
     Buzzer_Stop();
     Buzzer_Unlock();

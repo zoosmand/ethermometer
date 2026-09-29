@@ -342,8 +342,24 @@ ErrorStatus OneWire_Search(void) {
   memset(oneWireDevices, 0, sizeof(oneWireDevices));
   if (OneWire_Reset()) return (ERROR);
   lastfork = 65;
+  uint8_t previousRom[8] = {0U};
+  BaseType_t havePrevious = pdFALSE;
   for (uint8_t i = 0; i < NUM_DEVICES_ON_BUS; i++) {
+    /* Search ROM needs the preceding path to make the next fork decision. */
+    if (havePrevious == pdTRUE) {
+      memcpy(
+        oneWireDevices[oneWireDeviceCount].rom,
+        previousRom,
+        sizeof(oneWireDevices[oneWireDeviceCount].rom)
+      );
+    }
     if (OneWire_Enumerate(oneWireDevices[oneWireDeviceCount].rom)) break;
+    memcpy(
+      previousRom,
+      oneWireDevices[oneWireDeviceCount].rom,
+      sizeof(previousRom)
+    );
+    havePrevious = pdTRUE;
 
     uint8_t crc = 0U;
     for (uint8_t byte = 0U; byte < 8U; byte++) {
@@ -396,5 +412,3 @@ OneWireDevice_TypeDef* OneWire_GetDevices(void) {
 uint8_t OneWire_GetDeviceCount(void) {
   return oneWireDeviceCount;
 }
-
-

@@ -21,6 +21,7 @@
 #define API_SOCKET               2U
 #define API_PORT                 80U
 #define API_REQUEST_BUFFER_SIZE 512U
+#define API_BUZZER_WAIT_MS      1000U
 
 /** @brief HTTP method recognized by the router. */
 typedef enum {
@@ -329,7 +330,10 @@ static ErrorStatus apiService_ParseContentLength(void) {
         if (found == pdTRUE) return (ERROR);
         found = pdTRUE;
         uint16_t cursor = lineStart + (uint16_t)headerNameLength;
-        while ((cursor < i) && (requestBuffer[cursor] == ' ')) cursor++;
+        while ((cursor < i)
+            && ((requestBuffer[cursor] == ' ') || (requestBuffer[cursor] == '\t'))) {
+          cursor++;
+        }
         if ((cursor >= i) || (requestBuffer[cursor] < '0') || (requestBuffer[cursor] > '9')) {
           return (ERROR);
         }
@@ -340,7 +344,10 @@ static ErrorStatus apiService_ParseContentLength(void) {
           value = (value * 10U) + digit;
           cursor++;
         }
-        while ((cursor < i) && (requestBuffer[cursor] == ' ')) cursor++;
+        while ((cursor < i)
+            && ((requestBuffer[cursor] == ' ') || (requestBuffer[cursor] == '\t'))) {
+          cursor++;
+        }
         if (cursor != i) return (ERROR);
         contentLength = value;
       }
@@ -956,10 +963,10 @@ static void apiService_HandleTemperatureList(void) {
 
 // -------------------------------------------------------------
 static void apiService_HandleBuzzerTest(void) {
-  if (Buzzer_SelfTest() == SUCCESS) {
+  if (Buzzer_SelfTestWithTimeout(pdMS_TO_TICKS(API_BUZZER_WAIT_MS)) == SUCCESS) {
     apiService_Respond(200U, "OK", "{\"result\":\"ok\"}");
   } else {
-    apiService_Respond(500U, "Internal Server Error", "{\"result\":\"error\"}");
+    apiService_Respond(503U, "Service Unavailable", "{\"error\":\"buzzer_busy\"}");
   }
 }
 

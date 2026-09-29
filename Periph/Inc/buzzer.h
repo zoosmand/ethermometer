@@ -54,6 +54,13 @@ void Buzzer_Stop(void);
   */
 ErrorStatus Buzzer_SelfTest(void);
 
+/**
+  * @brief Emit the self-test tone after waiting at most the supplied interval.
+  * @param timeout (TickType_t) Maximum ticks to wait for buzzer ownership.
+  * @retval (ErrorStatus) ERROR when the buzzer is busy or the tone cannot start.
+  */
+ErrorStatus Buzzer_SelfTestWithTimeout(TickType_t timeout);
+
 /** @brief Acquire exclusive ownership for a complete buzzer pattern. */
 BaseType_t Buzzer_Lock(TickType_t timeout);
 

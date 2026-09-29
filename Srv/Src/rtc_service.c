@@ -31,6 +31,7 @@
 static TickType_t lastSyncSuccess;
 static uint16_t consecutiveFailures;
 static BaseType_t synchronized;
+static uint32_t requestSequence;
 
 static void rtcService_Task(void*);
 static void rtcService_DnsTimer(TimerHandle_t);
@@ -213,6 +214,18 @@ static ErrorStatus rtcService_RequestTime(const uint8_t* serverAddress, uint32_t
 
   memset(packet, 0, sizeof(packet));
   packet[0] = 0x23U; /* LI=0, VN=4, Mode=3 (client) */
+  uint32_t requestTick = xTaskGetTickCount();
+  uint32_t requestId = ++requestSequence;
+  packet[40] = (uint8_t)(requestTick >> 24U);
+  packet[41] = (uint8_t)(requestTick >> 16U);
+  packet[42] = (uint8_t)(requestTick >> 8U);
+  packet[43] = (uint8_t)requestTick;
+  packet[44] = (uint8_t)(requestId >> 24U);
+  packet[45] = (uint8_t)(requestId >> 16U);
+  packet[46] = (uint8_t)(requestId >> 8U);
+  packet[47] = (uint8_t)requestId;
+  uint8_t requestTimestamp[8];
+  memcpy(requestTimestamp, &packet[40], sizeof(requestTimestamp));
 
   (void)close(NTP_SOCKET);
   if (socket(NTP_SOCKET, Sn_MR_UDP, NTP_LOCAL_PORT, 0x00) != NTP_SOCKET) {
@@ -236,8 +249,11 @@ static ErrorStatus rtcService_RequestTime(const uint8_t* serverAddress, uint32_t
       uint8_t leap = packet[0] >> 6U;
       uint8_t mode = packet[0] & 0x07U;
       uint8_t stratum = packet[1];
+      BaseType_t matchesRequest =
+        (memcmp(&packet[24], requestTimestamp, sizeof(requestTimestamp)) == 0);
       if ((received == (int32_t)NTP_PACKET_SIZE)
           && (expectedEndpoint == pdTRUE)
+          && (matchesRequest == pdTRUE)
           && (leap != 3U)
           && (mode == 4U)
           && (stratum > 0U)

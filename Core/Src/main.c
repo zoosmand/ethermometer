@@ -56,8 +56,6 @@ int main(void) {
     FLAG_SET(peripheralReadiness, PERIPHERAL_SPI1_ERROR_BIT);
   }
 
-  printf("Peripherals readiness list: 0x%08lx\n", peripheralReadiness);
-  
   /* Run the Heartbeat Service */
   HeartBeatService_Init();
 
@@ -74,6 +72,9 @@ int main(void) {
   /* RTC reporting and NTP synchronization; syncs only while SPI1/Ethernet is
    * healthy, but reports and prints locally either way. */
   RtcService_Init();
+
+  /* Service initialization can add readiness failures of its own. */
+  printf("Peripherals readiness list: 0x%08lx\n", peripheralReadiness);
 
   /* Run the internal health and watchdog service last. */
   HealthService_Init();
