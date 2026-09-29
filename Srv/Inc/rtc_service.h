@@ -35,9 +35,9 @@ typedef struct {
 /**
   * @brief Configure the RTC and create the periodic report/sync task.
   *
-  * The task attempts an NTP sync against pool.ntp.org immediately, then
-  * once per hour thereafter, and prints the current RTC reading via
-  * printf() once per minute regardless of sync state.
+  * The task waits for Ethernet address configuration, then attempts an NTP
+  * sync against pool.ntp.org. It retries until successful, synchronizes once
+  * per hour thereafter, and prints the current RTC reading once per minute.
   */
 void RtcService_Init(void);
 

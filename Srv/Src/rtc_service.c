@@ -134,6 +134,11 @@ static void rtcService_Task(void* parameters) {
   TickType_t lastWakeTime;
   uint32_t ticksSinceSync = 0U;
 
+  /* Do not race the network task at scheduler startup. The barrier is
+   * released only after the first address-configuration pass completes. */
+  while (W5500_WaitStartup(pdMS_TO_TICKS(1000U)) != pdTRUE) {
+    HealthService_Report(HEALTH_COMPONENT_RTC);
+  }
   if (W5500_IsReady() == pdTRUE) {
     (void)rtcService_Sync();
   }
@@ -174,7 +179,10 @@ static ErrorStatus rtcService_Sync(void) {
   uint8_t serverAddress[4];
   uint32_t unixTime;
 
+  /* Readiness can change after the caller's scheduling-time check. */
+  if (W5500_IsReady() != pdTRUE) return (ERROR);
   W5500_GetNtpServer(serverAddress);
+  if (W5500_IsReady() != pdTRUE) return (ERROR);
   if (rtcService_RequestTime(serverAddress, &unixTime) != SUCCESS) {
     rtcService_RecordResult(ERROR);
     return (ERROR);
