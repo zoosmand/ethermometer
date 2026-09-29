@@ -18,7 +18,6 @@
 #include "socket.h"
 #include <string.h>
 
-#define NTP_SERVER_HOST         "pool.ntp.org"
 #define NTP_PORT                 123U
 #define NTP_LOCAL_PORT           123U
 #define NTP_SOCKET                 4U
@@ -36,7 +35,6 @@ static uint32_t requestSequence;
 static void rtcService_Task(void*);
 static void rtcService_DnsTimer(TimerHandle_t);
 static ErrorStatus rtcService_Sync(void);
-static ErrorStatus rtcService_ResolveServer(uint8_t*);
 static ErrorStatus rtcService_RequestTime(const uint8_t*, uint32_t*);
 static void rtcService_RecordResult(ErrorStatus);
 static void rtcService_PrintTime(void);
@@ -56,16 +54,18 @@ void RtcService_Init(void) {
     FLAG_SET(peripheralReadiness, PERIPHERAL_RTC_ERROR_BIT);
   }
 
-  dnsTimer = xTimerCreateStatic(
-    "RTC DNS tick",
-    pdMS_TO_TICKS(1000U),
-    pdTRUE,
-    NULL,
-    rtcService_DnsTimer,
-    &dnsTimerStorage
-  );
-  if ((dnsTimer == NULL) || (xTimerStart(dnsTimer, 0U) != pdPASS)) {
-    FLAG_SET(peripheralReadiness, PERIPHERAL_RTC_ERROR_BIT);
+  if (W5500_IsSkipped() != pdTRUE) {
+    dnsTimer = xTimerCreateStatic(
+      "RTC DNS tick",
+      pdMS_TO_TICKS(1000U),
+      pdTRUE,
+      NULL,
+      rtcService_DnsTimer,
+      &dnsTimerStorage
+    );
+    if ((dnsTimer == NULL) || (xTimerStart(dnsTimer, 0U) != pdPASS)) {
+      FLAG_SET(peripheralReadiness, PERIPHERAL_RTC_ERROR_BIT);
+    }
   }
 
   TaskHandle_t task = xTaskCreateStatic(
@@ -135,8 +135,15 @@ static void rtcService_Task(void* parameters) {
   (void)parameters;
   TickType_t lastWakeTime;
   uint32_t ticksSinceSync = 0U;
+  BaseType_t ntpEnabled = (W5500_IsSkipped() != pdTRUE) ? pdTRUE : pdFALSE;
 
-  if (!FLAG_CHECK(peripheralReadiness, PERIPHERAL_SPI1_ERROR_BIT)) {
+  /* Do not race the network task at scheduler startup. The barrier is
+   * released only after the first address-configuration pass completes. */
+  while ((ntpEnabled == pdTRUE)
+      && (W5500_WaitStartup(pdMS_TO_TICKS(1000U)) != pdTRUE)) {
+    HealthService_Report(HEALTH_COMPONENT_RTC);
+  }
+  if ((ntpEnabled == pdTRUE) && (W5500_IsReady() == pdTRUE)) {
     (void)rtcService_Sync();
   }
   rtcService_PrintTime();
@@ -147,8 +154,11 @@ static void rtcService_Task(void* parameters) {
     vTaskDelayUntil(&lastWakeTime, pdMS_TO_TICKS(RTC_REPORT_PERIOD_MS));
 
     ticksSinceSync++;
-    if ((ticksSinceSync >= NTP_SYNC_PERIOD_TICKS)
-        && !FLAG_CHECK(peripheralReadiness, PERIPHERAL_SPI1_ERROR_BIT)) {
+    /* The network comes up after boot, so retry each period until the
+     * first successful sync, then fall back to the hourly schedule. */
+    if ((ntpEnabled == pdTRUE)
+        && ((ticksSinceSync >= NTP_SYNC_PERIOD_TICKS) || (synchronized != pdTRUE))
+        && (W5500_IsReady() == pdTRUE)) {
       ticksSinceSync = 0U;
       (void)rtcService_Sync();
     }
@@ -174,10 +184,10 @@ static ErrorStatus rtcService_Sync(void) {
   uint8_t serverAddress[4];
   uint32_t unixTime;
 
-  if (rtcService_ResolveServer(serverAddress) != SUCCESS) {
-    rtcService_RecordResult(ERROR);
-    return (ERROR);
-  }
+  /* Readiness can change after the caller's scheduling-time check. */
+  if (W5500_IsReady() != pdTRUE) return (ERROR);
+  W5500_GetNtpServer(serverAddress);
+  if (W5500_IsReady() != pdTRUE) return (ERROR);
   if (rtcService_RequestTime(serverAddress, &unixTime) != SUCCESS) {
     rtcService_RecordResult(ERROR);
     return (ERROR);
@@ -188,20 +198,12 @@ static ErrorStatus rtcService_Sync(void) {
   }
 
   rtcService_RecordResult(SUCCESS);
-  printf("NTP: synchronized with %s, unix_time=%lu\n", NTP_SERVER_HOST, (unsigned long)unixTime);
+  printf(
+    "NTP: synchronized with %u.%u.%u.%u, unix_time=%lu\n",
+    serverAddress[0], serverAddress[1], serverAddress[2], serverAddress[3],
+    (unsigned long)unixTime
+  );
   return (SUCCESS);
-}
-
-
-
-
-// -------------------------------------------------------------
-static ErrorStatus rtcService_ResolveServer(uint8_t* address) {
-  static const uint8_t host[] = NTP_SERVER_HOST;
-  uint8_t dnsServer[4];
-
-  W5500_GetDnsServer(dnsServer);
-  return (DNS_run(dnsServer, (uint8_t*)host, address) == 1) ? SUCCESS : ERROR;
 }
 
 

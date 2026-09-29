@@ -119,6 +119,7 @@ static void apiService_Task(void* parameters) {
 
 // -------------------------------------------------------------
 static void apiService_Run(void) {
+  if (W5500_IsReady() != pdTRUE) return;
   switch (getSn_SR(API_SOCKET)) {
     case SOCK_ESTABLISHED:
       if ((getSn_IR(API_SOCKET) & Sn_IR_CON) != 0U) {

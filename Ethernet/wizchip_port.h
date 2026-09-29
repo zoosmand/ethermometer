@@ -19,6 +19,7 @@ extern "C" {
 #endif
 
 #include <stdint.h>
+#include "FreeRTOS.h"
 
 /**
   * @brief Initialize the W5500, acquire network configuration, and prepare DNS.
@@ -27,11 +28,31 @@ extern "C" {
   */
 int W5500_Init(void);
 
+/** @brief Report whether link and network configuration are currently usable. */
+BaseType_t W5500_IsReady(void);
+
+/** @brief Report whether PB12 disabled network initialization at boot. */
+BaseType_t W5500_IsSkipped(void);
+
+/**
+  * @brief Wait for the first network configuration pass to finish.
+  * @param timeout (TickType_t) Maximum ticks to wait.
+  * @retval (BaseType_t) pdTRUE once configuration finished, or immediately when
+  *         configuration was skipped (PB12 low) or the network never started.
+  */
+BaseType_t W5500_WaitStartup(TickType_t timeout);
+
+/** @brief Report whether the display is reserved for the just-acquired IP. */
+BaseType_t W5500_IsDisplayHeld(void);
+
 /**
   * @brief Copy the currently configured IPv4 DNS server address.
   * @param address (uint8_t*) Destination array containing at least four bytes.
   */
 void W5500_GetDnsServer(uint8_t* address);
+
+/** @brief Copy the configured IPv4 NTP server address. */
+void W5500_GetNtpServer(uint8_t* address);
 
 #ifdef __cplusplus
 }
