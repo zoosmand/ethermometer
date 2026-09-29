@@ -13,6 +13,17 @@
 * [Naming conventions](docs/NAMING_CONVENTIONS.md)
 * [Postman collection](postman_collection.json) for the HTTP API
 
+### Ethernet
+
+The W5500 makes up to five reset-and-DHCP initialization attempts. After each
+reset it waits up to 5 s for the PHY link before sending DHCP traffic. If DHCP
+is unavailable, the fallback configuration is `192.168.1.50/24`, with gateway,
+DNS, and NTP at `192.168.1.1`; with a DHCP lease, NTP uses `pool.ntp.org`. The
+acquired IP address is printed and shown on the display. Link state is checked
+once per second and the gateway is pinged once per minute; link restoration or
+two missed gateway responses restart the full W5500/DHCP initialization
+sequence. Network setup runs in its own task, so boot is not delayed by it.
+
 ### HTTP API
 
 The device serves a small JSON REST API on TCP port 80. Every response has
