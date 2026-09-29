@@ -31,6 +31,8 @@
 #define W5500_ICMP_ECHO_REQUEST       8U
 #define W5500_ICMP_ECHO_REPLY         0U
 #define W5500_NTP_HOST             "pool.ntp.org"
+#define W5500_IP_DISPLAY_MS       10000U
+#define W5500_SKIP_SETTLE_MS         20U
 
 #define W5500_ERROR_MUTEX            -1
 #define W5500_ERROR_SPI              -2
@@ -68,8 +70,14 @@ static volatile BaseType_t w5500NetworkReady;
 static uint8_t w5500DhcpBuffer[W5500_DHCP_BUFFER_SIZE];
 static uint8_t w5500DnsBuffer[MAX_DNS_BUF_SIZE];
 static uint16_t w5500PingSequence;
+static StaticSemaphore_t w5500StartupStorage;
+static SemaphoreHandle_t w5500Startup;
+static volatile BaseType_t w5500StartupPending;
+static volatile BaseType_t w5500IpShown;
+static volatile TickType_t w5500IpShownTick;
 
 static void w5500_Task(void*);
+static BaseType_t w5500_IsSkipRequested(void);
 static void w5500_Select(void);
 static void w5500_Release(void);
 static uint8_t w5500_ReadByte(void);
@@ -98,6 +106,13 @@ int W5500_Init(void) {
 
   w5500Network = w5500DefaultNetwork;
   w5500NetworkReady = pdFALSE;
+  w5500StartupPending = pdFALSE;
+
+  if (w5500_IsSkipRequested() == pdTRUE) {
+    printf("W5500 network configuration skipped (PB12 low)\n");
+    return (0);
+  }
+
   w5500BusMutex = xSemaphoreCreateMutexStatic(&w5500BusMutexStorage);
   if (w5500BusMutex == NULL) return (W5500_ERROR_MUTEX);
   if (SPI_Enable(SPI1) != SUCCESS) return (W5500_ERROR_SPI);
@@ -109,6 +124,9 @@ int W5500_Init(void) {
    * tens of seconds and run in the Network task so they never block boot. */
   w5500_Reset();
   if (w5500_InitializeChip() != SUCCESS) return (W5500_ERROR_CHIP);
+
+  w5500Startup = xSemaphoreCreateBinaryStatic(&w5500StartupStorage);
+  w5500StartupPending = (w5500Startup != NULL) ? pdTRUE : pdFALSE;
 
   /* Same priority as the API and RTC services: the WIZnet socket calls spin
    * while waiting for SEND_OK/ARP, and that must never delay temperature
@@ -122,6 +140,7 @@ int W5500_Init(void) {
         taskStack,
         &taskControlBlock
       ) == NULL) {
+    w5500StartupPending = pdFALSE;
     return (W5500_ERROR_TASK);
   }
   return (0);
@@ -131,6 +150,25 @@ int W5500_Init(void) {
 // -------------------------------------------------------------
 BaseType_t W5500_IsReady(void) {
   return w5500NetworkReady;
+}
+
+
+// -------------------------------------------------------------
+BaseType_t W5500_WaitStartup(TickType_t timeout) {
+  /* Nothing to wait for when the network was skipped or never started. */
+  if ((w5500StartupPending != pdTRUE) || (w5500Startup == NULL)) return (pdTRUE);
+  if (xSemaphoreTake(w5500Startup, timeout) != pdTRUE) return (pdFALSE);
+  (void)xSemaphoreGive(w5500Startup); /* stay signalled for any other waiter */
+  return (pdTRUE);
+}
+
+
+// -------------------------------------------------------------
+BaseType_t W5500_IsDisplayHeld(void) {
+  if (w5500IpShown != pdTRUE) return (pdFALSE);
+  return ((xTaskGetTickCount() - w5500IpShownTick) < pdMS_TO_TICKS(W5500_IP_DISPLAY_MS))
+    ? pdTRUE
+    : pdFALSE;
 }
 
 
@@ -176,6 +214,8 @@ static void w5500_Task(void* parameters) {
   uint8_t retryCountdown = 0U;
 
   (void)w5500_InitializeNetwork();
+  w5500StartupPending = pdFALSE;
+  (void)xSemaphoreGive(w5500Startup);
 
   while (1) {
     vTaskDelay(pdMS_TO_TICKS(W5500_MONITOR_PERIOD_MS));
@@ -402,8 +442,23 @@ static void w5500_DisplayIp(void) {
   if (length > 0) {
     (void)WHxxxx_Clear();
     (void)WHxxxx_Print((const uint8_t*)text, (uint16_t)length);
+    /* Keep the address on screen; see W5500_IsDisplayHeld(). */
+    w5500IpShownTick = xTaskGetTickCount();
+    w5500IpShown = pdTRUE;
   }
 #endif
+}
+
+
+// -------------------------------------------------------------
+static BaseType_t w5500_IsSkipRequested(void) {
+  uint32_t shift = (ETH_SKIP_PIN - 8U) * 4U;
+
+  /* Input with pull-up: an open strap reads high, a strap to GND reads low. */
+  PIN_H(ETH_SKIP_PORT, ETH_SKIP_PIN);
+  MODIFY_REG(ETH_SKIP_PORT->CRH, (0xfU << shift), (GPIO_IN_PU << shift));
+  Delay_Milliseconds(W5500_SKIP_SETTLE_MS);
+  return (PIN_LEVEL(ETH_SKIP_PORT, ETH_SKIP_PIN) == 0U) ? pdTRUE : pdFALSE;
 }
 
 

@@ -32,6 +32,17 @@ int W5500_Init(void);
 BaseType_t W5500_IsReady(void);
 
 /**
+  * @brief Wait for the first network configuration pass to finish.
+  * @param timeout (TickType_t) Maximum ticks to wait.
+  * @retval (BaseType_t) pdTRUE once configuration finished, or immediately when
+  *         configuration was skipped (PB12 low) or the network never started.
+  */
+BaseType_t W5500_WaitStartup(TickType_t timeout);
+
+/** @brief Report whether the display is reserved for the just-acquired IP. */
+BaseType_t W5500_IsDisplayHeld(void);
+
+/**
   * @brief Copy the currently configured IPv4 DNS server address.
   * @param address (uint8_t*) Destination array containing at least four bytes.
   */

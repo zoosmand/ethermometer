@@ -125,8 +125,14 @@ ErrorStatus TemperatureSensorService_GetSnapshot(
 // -------------------------------------------------------------
 static void temperatureSensorService_Task(void* parameters) {
   (void)parameters;
-  TickType_t lastWakeTime = xTaskGetTickCount();
   uint8_t memoryReportCounter = 0U;
+
+  /* Measure only once the network is configured (or skipped). Keep reporting
+   * while waiting: configuration can outlast the health check period. */
+  while (W5500_WaitStartup(pdMS_TO_TICKS(1000U)) != pdTRUE) {
+    HealthService_Report(HEALTH_COMPONENT_TEMPERATURE);
+  }
+  TickType_t lastWakeTime = xTaskGetTickCount();
 
   while (1) {
     DS18B20_Measurement_TypeDef ds18b20Measurements[
@@ -401,6 +407,7 @@ static void temperatureSensorService_PrintCentiDegrees(int32_t centiDegrees) {
   */
 static void temperatureSensorService_UpdateDisplay(void) {
   if (FLAG_CHECK(peripheralReadiness, PERIPHERAL_WH_DISPLAY_ERROR_BIT)) return;
+  if (W5500_IsDisplayHeld() == pdTRUE) return; /* the acquired IP is showing */
 
   (void)WHxxxx_Clear();
   for (uint8_t i = 0U; i < sensorSnapshotCount; i++) {
